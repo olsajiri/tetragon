@@ -344,10 +344,6 @@ func LoadGenericTracepointSensor(bpfDir, mapDir string, load *sensors.Program, v
 
 	tracepointLog = logger.GetLogger()
 
-	btfCtxOffsetFn := func(i int) string {
-		return fmt.Sprintf("t_arg%d_ctx_off", i)
-	}
-
 	tpIdx, ok := load.LoaderData.(int)
 	if !ok {
 		return 0, fmt.Errorf("loaderData for genericTracepoint %s is %T (%v) (not an int)", load.Name, load.LoaderData, load.LoaderData)
@@ -381,10 +377,8 @@ func LoadGenericTracepointSensor(bpfDir, mapDir string, load *sensors.Program, v
 	// iterate over output arguments
 	for i := range tp.args {
 		tpArg := &tp.args[i]
-		if err := btfAddEnumValue(btfCtxOffsetFn(i), tpArg.CtxOffset); err != nil {
-			return 0, err
-		}
 
+		config.ArgTpCtxOff[i] = uint32(tpArg.CtxOffset)
 		_, err := tpArg.setGenericTypeId()
 		if err != nil {
 			return 0, fmt.Errorf("output argument %v unsupported: %w", tpArg, err)
@@ -398,10 +392,7 @@ func LoadGenericTracepointSensor(bpfDir, mapDir string, load *sensors.Program, v
 
 	// nop args
 	for i := len(tp.args); i < genericTP_MaxArgs; i++ {
-		if err := btfAddEnumValue(btfCtxOffsetFn(i), 0); err != nil {
-			return 0, err
-		}
-
+		config.ArgTpCtxOff[i] = uint32(0)
 		config.Arg[i] = int32(gt.GenericNopType)
 		config.ArgM[i] = uint32(0)
 	}
