@@ -18,6 +18,7 @@ import (
 	"strconv"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/cilium/tetragon/api/v1/tetragon"
 	ec "github.com/cilium/tetragon/pkg/eventchecker"
@@ -38,7 +39,7 @@ func TestCopyFd(t *testing.T) {
 	var doneWG, readyWG sync.WaitGroup
 	defer doneWG.Wait()
 
-	ctx, cancel := context.WithTimeout(context.Background(), cmdWaitTime)
+	ctx, cancel := context.WithTimeout(context.Background(), 60000*time.Millisecond)
 	defer cancel()
 
 	testBin := testutils.ContribPath("tester-progs/dup-tester")
