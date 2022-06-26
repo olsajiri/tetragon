@@ -35,6 +35,10 @@ spec:
           spec:
             description: Tracing policy specification.
             properties:
+              followFd:
+                default: false
+                description: Indicates whether we collect all fds
+                type: boolean
               kprobes:
                 description: A list of kprobe specs.
                 items:

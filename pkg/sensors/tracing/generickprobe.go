@@ -45,6 +45,12 @@ func init() {
 	sensors.RegisterProbeType("generic_kprobe", kprobe)
 	sensors.RegisterTracingSensorsAtInit(kprobe.name, kprobe)
 	observer.RegisterEventHandlerAtInit(ops.MSG_OP_GENERIC_KPROBE, handleGenericKprobe)
+
+	followfd := &observerFollowfdSensor{
+		name: "followfd sensor",
+	}
+	sensors.RegisterProbeType("followfd_trampoline", followfd)
+	sensors.RegisterTracingSensorsAtInit(followfd.name, followfd)
 }
 
 const (
@@ -182,7 +188,7 @@ func initBinaryNames(spec *v1alpha1.KProbeSpec) error {
 	return nil
 }
 
-func addGenericKprobeSensors(kprobes []v1alpha1.KProbeSpec, btfBaseFile string) (*sensors.Sensor, error) {
+func addGenericKprobeSensors(kprobes []v1alpha1.KProbeSpec, btfBaseFile string, followFd bool) (*sensors.Sensor, error) {
 	var progs []*program.Program
 	var maps []*program.Map
 
@@ -881,11 +887,21 @@ func (k *observerKprobeSensor) SpecHandler(raw interface{}) (*sensors.Sensor, er
 		return nil, errors.New("tracing policies with both kprobes and tracepoints are not currently supported")
 	}
 	if len(spec.KProbes) > 0 {
-		return addGenericKprobeSensors(spec.KProbes, option.Config.BTF)
+		return addGenericKprobeSensors(spec.KProbes, option.Config.BTF, spec.FollowFd)
 	}
 	return nil, nil
 }
 
 func (k *observerKprobeSensor) LoadProbe(args sensors.LoadProbeArgs) error {
+	return loadGenericKprobeSensor(args.BPFDir, args.MapDir, args.Load, args.Version, args.Verbose)
+}
+
+func (k *observerFollowfdSensor) SpecHandler(raw interface{}) (*sensors.Sensor, error) {
+	if spec.FollowFd {
+	}
+	return nil, nil
+}
+
+func (k *observerFollowfdSensor) LoadProbe(args sensors.LoadProbeArgs) error {
 	return loadGenericKprobeSensor(args.BPFDir, args.MapDir, args.Load, args.Version, args.Verbose)
 }

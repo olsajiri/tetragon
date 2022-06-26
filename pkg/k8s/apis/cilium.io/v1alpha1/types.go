@@ -38,6 +38,10 @@ type TracingPolicy struct {
 
 type TracingPolicySpec struct {
 	// +kubebuilder:validation:Optional
+	// +kubebuilder:default=false
+	// Indicates whether we collect all fds
+	FollowFd bool `json:"followFd"`
+	// +kubebuilder:validation:Optional
 	// A list of kprobe specs.
 	KProbes []KProbeSpec `json:"kprobes"`
 	// +kubebuilder:validation:Optional
