@@ -98,6 +98,29 @@ func KprobeAttach(load *Program) AttachFunc {
 	}
 }
 
+func TracingAttach(load *Program) AttachFunc {
+	return func(prog *ebpf.Program, spec *ebpf.ProgramSpec) (unloader.Unloader, error) {
+		var lnk link.Link
+		var err error
+		var opts link.TracingOptions
+
+		opts.Program = prog
+
+		lnk, err = link.AttachTracing(opts)
+		if err != nil {
+			return nil, fmt.Errorf("attaching '%s' failed: %w", spec.Name, err)
+		}
+		return unloader.ChainUnloader{
+			unloader.PinUnloader{
+				Prog: prog,
+			},
+			unloader.LinkUnloader{
+				Link: lnk,
+			},
+		}, nil
+	}
+}
+
 func LoadTracepointProgram(bpfDir, mapDir string, load *Program, verbose int) error {
 	ci := &customInstall{fmt.Sprintf("%s-tp-calls", load.PinPath), "tracepoint"}
 	return loadProgram(bpfDir, []string{mapDir}, load, TracepointAttach(load), ci, verbose)
@@ -106,6 +129,10 @@ func LoadTracepointProgram(bpfDir, mapDir string, load *Program, verbose int) er
 func LoadKprobeProgram(bpfDir, mapDir string, load *Program, verbose int) error {
 	ci := &customInstall{fmt.Sprintf("%s-kp-calls", load.PinPath), "kprobe"}
 	return loadProgram(bpfDir, []string{mapDir}, load, KprobeAttach(load), ci, verbose)
+}
+
+func LoadTracingProgram(bpfDir, mapDir string, load *Program, verbose int) error {
+	return loadProgram(bpfDir, []string{mapDir}, load, TracingAttach(load), nil, verbose)
 }
 
 func slimVerifierError(errStr string) string {
