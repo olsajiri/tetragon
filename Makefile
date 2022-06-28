@@ -23,7 +23,7 @@ GOLANGCILINT_WANT_VERSION = 1.45.2
 GOLANGCILINT_VERSION = $(shell golangci-lint version 2>/dev/null)
 
 
-all: tetragon-bpf tetragon tetra tetragon-alignchecker test-compile tester-progs
+all: tetragon-bpf tetragon tetra tetragon-alignchecker tester-progs
 
 .PHONY: tetragon-bpf tetragon-bpf-local tetragon-bpf-container tester-progs
 
