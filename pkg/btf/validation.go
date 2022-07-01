@@ -134,22 +134,42 @@ func ValidateKprobeSpec(bspec *btf.Spec, kspec *v1alpha1.KProbeSpec) error {
 	}
 
 	fnNArgs := uint32(len(proto.Params))
-
 	for i := range kspec.Args {
 		specArg := &kspec.Args[i]
 		if specArg.Index >= fnNArgs {
 			return fmt.Errorf("kprobe arg %d has an invalid index: %d based on prototype: %s", i, specArg.Index, proto)
 		}
-
 		arg := proto.Params[int(specArg.Index)]
-		typesCompatible(specArg.Type, arg.Type.TypeName())
+		paramTyStr := getKernelType(arg.Type)
+		if !typesCompatible(specArg.Type, paramTyStr) {
+			return &ValidationWarn{s: fmt.Sprintf("type (%s) of argument %d does not match spec type (%s)\n", paramTyStr, specArg.Index, specArg.Type)}
+		}
 	}
 
 	if kspec.Return {
-		typesCompatible(kspec.ReturnArg.Type, proto.Return.TypeName())
+		retTyStr := getKernelType(proto.Return)
+		if !typesCompatible(kspec.ReturnArg.Type, retTyStr) {
+			return &ValidationWarn{s: fmt.Sprintf("return type (%s) does not match spec return type (%s)\n", retTyStr, kspec.ReturnArg.Type)}
+		}
 	}
 
 	return nil
+}
+
+func getKernelType(arg btf.Type) string {
+	ptr, ok := arg.(*btf.Pointer)
+	if ok {
+		arg = ptr.Target
+	}
+	num, ok := arg.(*btf.Int)
+	if ok {
+		return num.Name
+	}
+	strct, ok := arg.(*btf.Struct)
+	if ok {
+		return strct.Name
+	}
+	return arg.TypeName()
 }
 
 func typesCompatible(specTy string, kernelTy string) bool {
