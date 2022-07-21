@@ -28,7 +28,7 @@ struct bpf_map_def __attribute__((section("maps"), used)) config_map = {
 };
 
 __attribute__((section("kprobe/generic_retkprobe"), used)) int
-generic_kprobe_event(struct pt_regs *ctx)
+generic_retkprobe_event(struct pt_regs *ctx)
 {
 	struct execve_map_value *enter;
 	struct msg_generic_kprobe *e;
