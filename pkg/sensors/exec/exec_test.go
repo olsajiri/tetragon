@@ -4,9 +4,13 @@ package exec
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
+	"path"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -24,6 +28,7 @@ import (
 	"github.com/cilium/tetragon/pkg/sensors"
 	"github.com/cilium/tetragon/pkg/sensors/base"
 	"github.com/cilium/tetragon/pkg/sensors/exec/procevents"
+	"github.com/cilium/tetragon/pkg/sensors/program"
 	"github.com/cilium/tetragon/pkg/testutils"
 	tus "github.com/cilium/tetragon/pkg/testutils/sensors"
 	"github.com/stretchr/testify/assert"
@@ -448,4 +453,68 @@ func TestLoadInitialSensor(t *testing.T) {
 	tus.CheckSensorLoad([]*sensors.Sensor{sensor}, sensorMaps, sensorProgs, t)
 
 	sensors.UnloadAll(tus.Conf().TetragonLib)
+}
+
+type TaskIter struct {
+	Pid                  uint32
+	Nspid                uint32
+	Ktime                uint64
+	Ppid                 uint32
+	Pnspid               uint32
+	Pktime               uint64
+	Effective            uint64
+	Inheritable          uint64
+	Permitted            uint64
+	Uts_ns               uint32
+	Ipc_ns               uint32
+	Mnt_ns               uint32
+	Pid_ns               uint32
+	Pid_for_children_ns  uint32
+	Net_ns               uint32
+	Time_ns              uint32
+	Time_for_children_ns uint32
+	Cgroup_ns            uint32
+	User_ns              uint32
+	Uid                  uint32
+	Auid                 uint32
+}
+
+func TestIterator(t *testing.T) {
+	if !kernels.EnableIterProgs() {
+		t.Skip()
+	}
+
+	var err error
+
+	base.Iter.Name = path.Join(tus.Conf().TetragonLib, base.Iter.Name)
+
+	err = program.LoadIterProgram(bpf.MapPrefixPath(), bpf.MapPrefixPath(), base.Iter, 10)
+	if err != nil {
+		t.Fatalf("failed LoadIterProgram %v\n", err)
+	}
+
+	dataPath := filepath.Join(bpf.MapPrefixPath(), fmt.Sprintf("%s_data", base.Iter.PinPath))
+
+	var f *os.File
+
+	f, err = os.Open(dataPath)
+	if err != nil {
+		t.Fatalf("failed to open %v\n", err)
+	}
+
+	defer f.Close()
+
+	for {
+		task := TaskIter{}
+
+		err = binary.Read(f, binary.LittleEndian, &task)
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatalf("failed to read %v\n", err)
+		}
+
+		fmt.Printf("%v\n", task)
+	}
 }
