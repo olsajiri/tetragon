@@ -229,6 +229,10 @@ static int BPF_FUNC(send_signal, uint32_t sig);
 
 static int BPF_FUNC(override_return, void *regs, uint64_t rc);
 
+static int BPF_FUNC(seq_printf, struct seq_file *m, const char *fmt, uint32_t fmt_size, const void *data, uint32_t data_len);
+
+static int BPF_FUNC(seq_write, struct seq_file *m, const void *data, uint32_t len);
+
 /** LLVM built-ins, mem*() routines work for constant size */
 
 #ifndef lock_xadd
