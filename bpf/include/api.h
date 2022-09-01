@@ -233,6 +233,8 @@ static int BPF_FUNC(seq_printf, struct seq_file *m, const char *fmt, uint32_t fm
 
 static int BPF_FUNC(seq_write, struct seq_file *m, const void *data, uint32_t len);
 
+static int BPF_FUNC(copy_from_user_task, void *dst, uint32_t size, const void *user_ptr, struct task_struct *tsk, uint64_t flags);;
+
 /** LLVM built-ins, mem*() routines work for constant size */
 
 #ifndef lock_xadd

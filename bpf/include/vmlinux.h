@@ -9283,6 +9283,7 @@ enum bpf_func_id {
 	BPF_FUNC_ringbuf_discard = 133,
 	BPF_FUNC_ringbuf_query = 134,
 	BPF_FUNC_csum_level = 135,
+	BPF_FUNC_copy_from_user_task = 191,
 	__BPF_FUNC_MAX_ID = 136,
 };
 
