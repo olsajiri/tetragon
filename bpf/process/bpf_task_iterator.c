@@ -15,7 +15,8 @@ union cap_value {
 	__u64 val;
 };
 
-struct task_iter {
+struct task_iter_proc {
+	__u32 type;
 	__u32 pid;
 	__u32 nspid;
 	__u64 ktime;
@@ -39,6 +40,22 @@ struct task_iter {
 	__u32 auid;
 } __attribute__((packed));
 
+struct task_iter_args {
+	__u32 type;
+	__u32 size;
+	__u8 args[16384];
+};
+
+#define TYPE_PROC 0
+#define TYPE_ARGS 1
+
+struct task_iter {
+	union {
+		struct task_iter_proc proc;
+		struct task_iter_args args;
+	};
+};
+
 struct {
 	__uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
 	__uint(max_entries, 1);
@@ -60,6 +77,8 @@ dump_task(struct bpf_iter__task *ctx)
 	struct seq_file *seq = ctx->meta->seq;
 	struct task_struct *task = ctx->task;
 	struct task_struct *parent;
+	struct task_iter_proc *p;
+	struct task_iter_args *a;
 	struct task_iter *iter;
 	union cap_value cap;
 	__u32 zero = 0;
@@ -72,58 +91,60 @@ dump_task(struct bpf_iter__task *ctx)
 	if (!iter)
 		return 0;
 
-	iter->pid = BPF_CORE_READ(task, tgid);
-	iter->ktime = task_ktime(task);
-	iter->nspid = get_task_pid_vnr_task(task);
+	p = &iter->proc;
+	p->type = 0;
+	p->pid = BPF_CORE_READ(task, tgid);
+	p->ktime = task_ktime(task);
+	p->nspid = get_task_pid_vnr_task(task);
 
 	// caps
 	cap.base = BPF_CORE_READ(task, cred, cap_effective);
-	iter->effective = cap.val;
+	p->effective = cap.val;
 
 	cap.base = BPF_CORE_READ(task, cred, cap_inheritable);
-	iter->inheritable = cap.val;
+	p->inheritable = cap.val;
 
 	cap.base = BPF_CORE_READ(task, cred, cap_permitted);
-	iter->permitted = cap.val;
+	p->permitted = cap.val;
 
 	// ns
-	iter->uts_inum = BPF_CORE_READ(task, nsproxy, uts_ns, ns.inum);
-	iter->ipc_inum = BPF_CORE_READ(task, nsproxy, ipc_ns, ns.inum);
-	iter->mnt_inum = BPF_CORE_READ(task, nsproxy, mnt_ns, ns.inum);
+	p->uts_inum = BPF_CORE_READ(task, nsproxy, uts_ns, ns.inum);
+	p->ipc_inum = BPF_CORE_READ(task, nsproxy, ipc_ns, ns.inum);
+	p->mnt_inum = BPF_CORE_READ(task, nsproxy, mnt_ns, ns.inum);
 
 	{
-		struct pid *p = BPF_CORE_READ(task, thread_pid);
+		struct pid *pid = BPF_CORE_READ(task, thread_pid);
 
-		if (p) {
-			int level = BPF_CORE_READ(p, level);
-			struct upid *up = BPF_CORE_READ(p, numbers + level);
+		if (pid) {
+			int level = BPF_CORE_READ(pid, level);
+			struct upid *up = BPF_CORE_READ(pid, numbers + level);
 
-			iter->pid_inum = BPF_CORE_READ(up, ns, ns.inum);
+			p->pid_inum = BPF_CORE_READ(up, ns, ns.inum);
 		} else {
-			iter->pid_inum = 0;
+			p->pid_inum = 0;
 		}
 	}
 
-	iter->pid_for_children_inum = BPF_CORE_READ(task, nsproxy, pid_ns_for_children, ns.inum);
-	iter->net_inum = BPF_CORE_READ(task, nsproxy, net_ns, ns.inum);
-	iter->cgroup_inum = BPF_CORE_READ(task, nsproxy, cgroup_ns, ns.inum);
-	iter->user_inum = BPF_CORE_READ(task, mm, user_ns, ns.inum);
+	p->pid_for_children_inum = BPF_CORE_READ(task, nsproxy, pid_ns_for_children, ns.inum);
+	p->net_inum = BPF_CORE_READ(task, nsproxy, net_ns, ns.inum);
+	p->cgroup_inum = BPF_CORE_READ(task, nsproxy, cgroup_ns, ns.inum);
+	p->user_inum = BPF_CORE_READ(task, mm, user_ns, ns.inum);
 
 	if (bpf_core_field_exists(task->nsproxy->time_ns)) {
-		iter->time_inum = BPF_CORE_READ(task, nsproxy, time_ns, ns.inum);
-		iter->time_for_children_inum = BPF_CORE_READ(task, nsproxy, time_ns_for_children, ns.inum);
+		p->time_inum = BPF_CORE_READ(task, nsproxy, time_ns, ns.inum);
+		p->time_for_children_inum = BPF_CORE_READ(task, nsproxy, time_ns_for_children, ns.inum);
 	}
 
-	iter->uid = get_current_uid_gid();
+	p->uid = get_current_uid_gid();
 
 	{
-		iter->auid = 0;
+		p->auid = 0;
 
 		if (bpf_core_field_exists(task->loginuid)) {
-			iter->auid = BPF_CORE_READ(task, loginuid.val);
+			p->auid = BPF_CORE_READ(task, loginuid.val);
 		} else if (bpf_core_field_exists(task->audit)) {
 			if (BPF_CORE_READ(task, audit)) {
-				iter->auid = BPF_CORE_READ(task, audit, loginuid.val);
+				p->auid = BPF_CORE_READ(task, audit, loginuid.val);
 			}
                 }
         }
@@ -131,11 +152,23 @@ dump_task(struct bpf_iter__task *ctx)
 	// parent
 	parent = BPF_CORE_READ(task, parent);
 
-	iter->ppid = BPF_CORE_READ(parent, tgid);
-	iter->pktime = task_ktime(parent);
-	iter->pnspid = get_task_pid_vnr_task(parent);
+	p->ppid = BPF_CORE_READ(parent, tgid);
+	p->pktime = task_ktime(parent);
+	p->pnspid = get_task_pid_vnr_task(parent);
 
-	seq_write(seq, iter, sizeof(*iter));
+	seq_write(seq, p, sizeof(*p));
+
+	// args
+	a = &iter->args;
+	{
+		unsigned long arg_start, arg_end;
+
+		arg_start = BPF_CORE_READ(task, mm, arg_start);
+		arg_end = BPF_CORE_READ(task, mm, arg_end);
+
+		err = copy_from_user_task(&data->buf[0], size,
+					(const void *) start_stack + total, task, 0);
+	}
 
 	return 0;
 }
