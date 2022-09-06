@@ -331,11 +331,11 @@ func getRunningProcsIter() ([]Procs, error) {
 			return procs, err
 		}
 
-		var args TaskIterArgs
-		var full string
+		var argsData TaskIterArgs
+		var args []byte
 
 		for {
-			err = binary.Read(f, binary.LittleEndian, &args)
+			err = binary.Read(f, binary.LittleEndian, &argsData)
 			if err == io.EOF {
 				break
 			}
@@ -343,14 +343,14 @@ func getRunningProcsIter() ([]Procs, error) {
 				return procs, err
 			}
 
-			data := make([]byte, args.Size)
+			data := make([]byte, argsData.Size)
 			if err := binary.Read(f, binary.LittleEndian, &data); err != nil {
 				return procs, err
 			}
 
-			full = full + string(data[:args.Size])
+			args = append(args, data...)
 
-			if args.Flags != 0 {
+			if argsData.Flags != 0 {
 				break
 			}
 		}
@@ -382,6 +382,8 @@ func getRunningProcsIter() ([]Procs, error) {
 			cgroup_ns:            task.Cgroup_ns,
 			user_ns:              task.User_ns,
 		}
+
+		p.args = stringToUTF8(args)
 
 		procs = append(procs, p)
 	}

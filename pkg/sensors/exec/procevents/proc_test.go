@@ -231,6 +231,8 @@ func TestIterator(t *testing.T) {
 			match = match && assert.Equal(t, fs.cgroup_ns, iter.cgroup_ns, "cgroup_ns does not match")
 			match = match && assert.Equal(t, fs.user_ns, iter.user_ns, "user_ns does not match")
 
+			match = match && assert.Equal(t, fs.args, iter.args, "args do not match")
+
 			if !match {
 				t.Fatalf("failed to match procfs task pid %d\n", fs.pid)
 			}
