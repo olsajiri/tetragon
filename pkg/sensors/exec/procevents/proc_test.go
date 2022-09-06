@@ -5,10 +5,20 @@ package procevents
 
 import (
 	"os"
+	"path"
 	"testing"
 
+	"github.com/cilium/tetragon/pkg/kernels"
+	"github.com/cilium/tetragon/pkg/option"
+	"github.com/cilium/tetragon/pkg/sensors/base"
+	tus "github.com/cilium/tetragon/pkg/testutils/sensors"
 	"github.com/stretchr/testify/assert"
 )
+
+func TestMain(m *testing.M) {
+	ec := tus.TestSensorsRun(m, "ProcReader")
+	os.Exit(ec)
+}
 
 func TestProcsContainerIdOffset(t *testing.T) {
 	test1 := "123456789abcdef"
@@ -169,4 +179,61 @@ func TestProcsFindContainerId(t *testing.T) {
 	d, i = procsFindDockerId(p)
 	assert.Equal(t, d, "", "Expect output '' empty string")
 	assert.Equal(t, i, 0, "Expect ContainerId offset should be zero")
+}
+
+func TestIterator(t *testing.T) {
+	if !kernels.EnableIterProgs() {
+		t.Skip()
+	}
+
+	base.Iter.Name = path.Join(tus.Conf().TetragonLib, base.Iter.Name)
+
+	procsIter, err := getRunningProcsIter()
+	if err != nil {
+		t.Fatalf("failed getRunningProcsIter: %v\n", err)
+	}
+
+	option.Config.HubbleLib = tus.Conf().TetragonLib
+
+	procsFs := getRunningProcsFs()
+
+	for _, fs := range procsFs {
+		for _, iter := range procsIter {
+			if fs.pid != iter.pid {
+				continue
+			}
+
+			var match bool = true
+
+			// equal pids, verify and warn if the rest does not match
+			match = match && assert.Equal(t, fs.ppid, iter.ppid, "ppid does not match")
+			match = match && assert.Equal(t, fs.pnspid, iter.pnspid, "pnspid does not match")
+			//match = match && assert.Equal(t, fs.pflags, iter.pflags, "pflags does not match")
+			//match = match && assert.Equal(t, fs.pktime, iter.pktime, "pktime does not match")
+			//match = match && assert.Equal(t, fs.size, iter.size, "size does not match")
+			match = match && assert.Equal(t, fs.uid, iter.uid, "uid does not match")
+			match = match && assert.Equal(t, fs.pid, iter.pid, "pid does not match")
+			match = match && assert.Equal(t, fs.nspid, iter.nspid, "nspid does not match")
+			//match = match && assert.Equal(t, fs.auid, iter.auid, "auid does not match")
+			//match = match && assert.Equal(t, fs.flags, iter.flags, "flags does not match")
+			//match = match && assert.Equal(t, fs.ktime, iter.ktime, "ktime does not match")
+			match = match && assert.Equal(t, fs.effective, iter.effective, "effective does not match")
+			match = match && assert.Equal(t, fs.inheritable, iter.inheritable, "inheritable does not match")
+			match = match && assert.Equal(t, fs.permitted, iter.permitted, "permitted does not match")
+			match = match && assert.Equal(t, fs.uts_ns, iter.uts_ns, "uts_ns does not match")
+			match = match && assert.Equal(t, fs.ipc_ns, iter.ipc_ns, "ipc_ns does not match")
+			match = match && assert.Equal(t, fs.mnt_ns, iter.mnt_ns, "mnt_ns does not match")
+			//match = match && assert.Equal(t, fs.pid_ns, iter.pid_ns, "pid_ns does not match")
+			match = match && assert.Equal(t, fs.pid_for_children_ns, iter.pid_for_children_ns, "pid_for_children_ns does not match")
+			match = match && assert.Equal(t, fs.net_ns, iter.net_ns, "net_ns does not match")
+			match = match && assert.Equal(t, fs.time_ns, iter.time_ns, "time_ns does not match")
+			match = match && assert.Equal(t, fs.time_for_children_ns, iter.time_for_children_ns, "time_for_children_ns does not match")
+			match = match && assert.Equal(t, fs.cgroup_ns, iter.cgroup_ns, "cgroup_ns does not match")
+			match = match && assert.Equal(t, fs.user_ns, iter.user_ns, "user_ns does not match")
+
+			if !match {
+				t.Fatalf("failed to match procfs task pid %d\n", fs.pid)
+			}
+		}
+	}
 }
