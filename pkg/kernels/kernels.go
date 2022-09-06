@@ -128,6 +128,11 @@ func EnableLargeProgs() bool {
 	return (int64(kernelVer) >= KernelStringToNumeric("5.3.0"))
 }
 
+func EnableIterProgs() bool {
+	kernelVer, _, _ := GetKernelVersion(option.Config.KernelVersion, option.Config.ProcFS)
+	return (int64(kernelVer) >= KernelStringToNumeric("5.3.0"))
+}
+
 func IsKernelVersionLessThan(version string) bool {
 	kernelVer, _, _ := GetKernelVersion(option.Config.KernelVersion, option.Config.ProcFS)
 	return (int64(kernelVer) < KernelStringToNumeric(version))
