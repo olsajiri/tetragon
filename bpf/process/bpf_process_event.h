@@ -166,6 +166,7 @@ struct cwd_read_data {
 	struct dentry *dentry;
 	struct vfsmount *vfsmnt;
 	struct mount *mnt;
+	int error;
 };
 
 static inline __attribute__((always_inline)) int
@@ -177,7 +178,6 @@ prepend_path(const struct path *path, const struct path *root, char *bf,
 		.bf   = bf,
 	};
 	struct qstr d_name;
-	int error = 0;
 	char *bptr;
 	int i, blen;
 	bool resolved = false;
@@ -236,12 +236,12 @@ prepend_path(const struct path *path, const struct path *root, char *bf,
 		}
 		probe_read(&parent, sizeof(parent), _(&dentry->d_parent));
 		probe_read(&d_name, sizeof(d_name), _(&dentry->d_name));
-		error = prepend_name(data.bf, &bptr, &blen,
+		data.error = prepend_name(data.bf, &bptr, &blen,
 				     (const char *)d_name.name, d_name.len);
 		// This will happen where the dentry name does not fit in the buffer.
 		// We will stop the loop with resolved == false and later we will
 		// set the proper value in error before function return.
-		if (error)
+		if (data.error)
 			break;
 
 		data.dentry = parent;
@@ -251,10 +251,10 @@ prepend_path(const struct path *path, const struct path *root, char *bf,
 		return 0;
 	}
 	if (!resolved)
-		error = UNRESOLVED_PATH_COMPONENTS;
+		data.error = UNRESOLVED_PATH_COMPONENTS;
 	*buffer = bptr;
 	*buflen = blen;
-	return error;
+	return data.error;
 }
 
 static inline __attribute__((always_inline)) int
