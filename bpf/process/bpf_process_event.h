@@ -167,6 +167,8 @@ struct cwd_read_data {
 	struct vfsmount *vfsmnt;
 	struct mount *mnt;
 	int error;
+	char *bptr;
+	int blen;
 };
 
 static inline __attribute__((always_inline)) int
@@ -176,14 +178,13 @@ prepend_path(const struct path *path, const struct path *root, char *bf,
 	struct cwd_read_data data = {
 		.root = root,
 		.bf   = bf,
+		.bptr = *buffer,
+		.blen = *buflen,
 	};
 	struct qstr d_name;
-	char *bptr;
-	int i, blen;
+	int i;
 	bool resolved = false;
 
-	bptr = *buffer;
-	blen = *buflen;
 	probe_read(&data.dentry, sizeof(data.dentry), _(&path->dentry));
 	probe_read(&data.vfsmnt, sizeof(data.vfsmnt), _(&path->mnt));
 	data.mnt = real_mount(data.vfsmnt);
@@ -236,7 +237,7 @@ prepend_path(const struct path *path, const struct path *root, char *bf,
 		}
 		probe_read(&parent, sizeof(parent), _(&dentry->d_parent));
 		probe_read(&d_name, sizeof(d_name), _(&dentry->d_name));
-		data.error = prepend_name(data.bf, &bptr, &blen,
+		data.error = prepend_name(data.bf, &data.bptr, &data.blen,
 				     (const char *)d_name.name, d_name.len);
 		// This will happen where the dentry name does not fit in the buffer.
 		// We will stop the loop with resolved == false and later we will
@@ -246,14 +247,14 @@ prepend_path(const struct path *path, const struct path *root, char *bf,
 
 		data.dentry = parent;
 	}
-	if (bptr == *buffer) {
+	if (data.bptr == *buffer) {
 		*buflen = 0;
 		return 0;
 	}
 	if (!resolved)
 		data.error = UNRESOLVED_PATH_COMPONENTS;
-	*buffer = bptr;
-	*buflen = blen;
+	*buffer = data.bptr;
+	*buflen = data.blen;
 	return data.error;
 }
 
