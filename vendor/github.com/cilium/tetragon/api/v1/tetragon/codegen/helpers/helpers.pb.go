@@ -30,6 +30,8 @@ func ResponseTypeString(response *tetragon.GetEventsResponse) (string, error) {
 		return tetragon.EventType_PROCESS_KPROBE.String(), nil
 	case *tetragon.GetEventsResponse_ProcessTracepoint:
 		return tetragon.EventType_PROCESS_TRACEPOINT.String(), nil
+	case *tetragon.GetEventsResponse_ProcessLoader:
+		return tetragon.EventType_PROCESS_LOADER.String(), nil
 	case *tetragon.GetEventsResponse_Test:
 		return tetragon.EventType_TEST.String(), nil
 
