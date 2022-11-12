@@ -349,3 +349,62 @@ func (msg *MsgGenericKprobeUnix) Cast(o interface{}) notify.Message {
 	t := o.(MsgGenericKprobeUnix)
 	return &t
 }
+
+type MsgProcessLoaderUnix struct {
+	Pid     uint32
+	Tid     uint32
+	Path    string
+	Buildid []byte
+}
+
+type MsgProcessBinary struct {
+	Path    string
+	Buildid []byte
+}
+
+type MsgProcessLoader struct {
+	Pid      uint32
+	Tid      uint32
+	Binaries []MsgProcessBinary
+}
+
+func GetProcessLoader(event *MsgProcessLoaderUnix) *tetragon.ProcessLoader {
+	binary := &tetragon.ProcessBinary{
+		Path:    event.Path,
+		Buildid: event.Buildid,
+	}
+	tetragonEvent := &tetragon.ProcessLoader{
+		Pid:    event.Pid,
+		Tid:    event.Tid,
+		Binary: []*tetragon.ProcessBinary{binary},
+	}
+	return tetragonEvent
+}
+
+func (msg *MsgProcessLoaderUnix) Notify() bool {
+	return true
+}
+
+func (msg *MsgProcessLoaderUnix) RetryInternal(ev notify.Event, timestamp uint64) (*process.ProcessInternal, error) {
+	return nil, nil
+}
+
+func (msg *MsgProcessLoaderUnix) Retry(internal *process.ProcessInternal, ev notify.Event) error {
+	return nil
+}
+
+func (msg *MsgProcessLoaderUnix) HandleMessage() *tetragon.GetEventsResponse {
+	k := GetProcessLoader(msg)
+	if k == nil {
+		return nil
+	}
+	return &tetragon.GetEventsResponse{
+		Event:    &tetragon.GetEventsResponse_ProcessLoader{ProcessLoader: k},
+		NodeName: nodeName,
+	}
+}
+
+func (msg *MsgProcessLoaderUnix) Cast(o interface{}) notify.Message {
+	t := o.(MsgProcessLoaderUnix)
+	return &t
+}
