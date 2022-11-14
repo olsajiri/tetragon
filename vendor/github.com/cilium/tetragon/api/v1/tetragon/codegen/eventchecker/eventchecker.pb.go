@@ -276,6 +276,8 @@ func CheckerFromEvent(event Event) (EventChecker, error) {
 		return NewTestChecker().FromTest(ev), nil
 	case *tetragon.ProcessLoader:
 		return NewProcessLoaderChecker().FromProcessLoader(ev), nil
+	case *tetragon.ProcessBpf:
+		return NewProcessBpfChecker().FromProcessBpf(ev), nil
 
 	default:
 		return nil, fmt.Errorf("Unhandled event type %T", event)
@@ -317,6 +319,8 @@ func EventFromResponse(response *tetragon.GetEventsResponse) (Event, error) {
 		return ev.Test, nil
 	case *tetragon.GetEventsResponse_ProcessLoader:
 		return ev.ProcessLoader, nil
+	case *tetragon.GetEventsResponse_ProcessBpf:
+		return ev.ProcessBpf, nil
 
 	default:
 		return nil, fmt.Errorf("Unknown event type %T", response.Event)
@@ -1292,6 +1296,92 @@ nextCheck:
 	}
 
 	return nil
+}
+
+// ProcessBpfChecker implements a checker struct to check a ProcessBpf event
+type ProcessBpfChecker struct {
+	Id   *uint32                    `json:"id,omitempty"`
+	Type *ProcessBpfTypeChecker     `json:"type,omitempty"`
+	Tag  *bytesmatcher.BytesMatcher `json:"tag,omitempty"`
+}
+
+// CheckEvent checks a single event and implements the EventChecker interface
+func (checker *ProcessBpfChecker) CheckEvent(event Event) error {
+	if ev, ok := event.(*tetragon.ProcessBpf); ok {
+		return checker.Check(ev)
+	}
+	return fmt.Errorf("%T is not a ProcessBpf event", event)
+}
+
+// CheckResponse checks a single gRPC response and implements the EventChecker interface
+func (checker *ProcessBpfChecker) CheckResponse(response *tetragon.GetEventsResponse) error {
+	event, err := EventFromResponse(response)
+	if err != nil {
+		return err
+	}
+	return checker.CheckEvent(event)
+}
+
+// NewProcessBpfChecker creates a new ProcessBpfChecker
+func NewProcessBpfChecker() *ProcessBpfChecker {
+	return &ProcessBpfChecker{}
+}
+
+// Check checks a ProcessBpf event
+func (checker *ProcessBpfChecker) Check(event *tetragon.ProcessBpf) error {
+	if event == nil {
+		return fmt.Errorf("ProcessBpfChecker: ProcessBpf event is nil")
+	}
+
+	if checker.Id != nil {
+		if *checker.Id != event.Id {
+			return fmt.Errorf("ProcessBpfChecker: Id has value %d which does not match expected value %d", event.Id, *checker.Id)
+		}
+	}
+	if checker.Type != nil {
+		if err := checker.Type.Check(&event.Type); err != nil {
+			return fmt.Errorf("ProcessBpfChecker: Type check failed: %w", err)
+		}
+	}
+	if checker.Tag != nil {
+		if err := checker.Tag.Match(event.Tag); err != nil {
+			return fmt.Errorf("ProcessBpfChecker: Tag check failed: %w", err)
+		}
+	}
+	return nil
+}
+
+// WithId adds a Id check to the ProcessBpfChecker
+func (checker *ProcessBpfChecker) WithId(check uint32) *ProcessBpfChecker {
+	checker.Id = &check
+	return checker
+}
+
+// WithType adds a Type check to the ProcessBpfChecker
+func (checker *ProcessBpfChecker) WithType(check tetragon.ProcessBpfType) *ProcessBpfChecker {
+	wrappedCheck := ProcessBpfTypeChecker(check)
+	checker.Type = &wrappedCheck
+	return checker
+}
+
+// WithTag adds a Tag check to the ProcessBpfChecker
+func (checker *ProcessBpfChecker) WithTag(check *bytesmatcher.BytesMatcher) *ProcessBpfChecker {
+	checker.Tag = check
+	return checker
+}
+
+//FromProcessBpf populates the ProcessBpfChecker using data from a ProcessBpf event
+func (checker *ProcessBpfChecker) FromProcessBpf(event *tetragon.ProcessBpf) *ProcessBpfChecker {
+	if event == nil {
+		return checker
+	}
+	{
+		val := event.Id
+		checker.Id = &val
+	}
+	checker.Type = NewProcessBpfTypeChecker(event.Type)
+	checker.Tag = bytesmatcher.Full(event.Tag)
+	return checker
 }
 
 // ImageChecker implements a checker struct to check a Image field
@@ -3894,6 +3984,58 @@ func (enum *KprobeActionChecker) Check(val *tetragon.KprobeAction) error {
 	}
 	if *enum != KprobeActionChecker(*val) {
 		return fmt.Errorf("KprobeActionChecker: KprobeAction has value %s which does not match expected value %s", (*val), tetragon.KprobeAction(*enum))
+	}
+	return nil
+}
+
+// ProcessBpfTypeChecker checks a tetragon.ProcessBpfType
+type ProcessBpfTypeChecker tetragon.ProcessBpfType
+
+// MarshalJSON implements json.Marshaler interface
+func (enum ProcessBpfTypeChecker) MarshalJSON() ([]byte, error) {
+	if name, ok := tetragon.ProcessBpfType_name[int32(enum)]; ok {
+		name = strings.TrimPrefix(name, "BPF_")
+		return json.Marshal(name)
+	}
+
+	return nil, fmt.Errorf("Unknown ProcessBpfType %d", enum)
+}
+
+// UnmarshalJSON implements json.Unmarshaler interface
+func (enum *ProcessBpfTypeChecker) UnmarshalJSON(b []byte) error {
+	var str string
+	if err := yaml.UnmarshalStrict(b, &str); err != nil {
+		return err
+	}
+
+	// Convert to uppercase if not already
+	str = strings.ToUpper(str)
+
+	// Look up the value from the enum values map
+	if n, ok := tetragon.ProcessBpfType_value[str]; ok {
+		*enum = ProcessBpfTypeChecker(n)
+	} else if n, ok := tetragon.ProcessBpfType_value["BPF_"+str]; ok {
+		*enum = ProcessBpfTypeChecker(n)
+	} else {
+		return fmt.Errorf("Unknown ProcessBpfType %s", str)
+	}
+
+	return nil
+}
+
+// NewProcessBpfTypeChecker creates a new ProcessBpfTypeChecker
+func NewProcessBpfTypeChecker(val tetragon.ProcessBpfType) *ProcessBpfTypeChecker {
+	enum := ProcessBpfTypeChecker(val)
+	return &enum
+}
+
+// Check checks a ProcessBpfType against the checker
+func (enum *ProcessBpfTypeChecker) Check(val *tetragon.ProcessBpfType) error {
+	if val == nil {
+		return fmt.Errorf("ProcessBpfTypeChecker: ProcessBpfType is nil and does not match expected value %s", tetragon.ProcessBpfType(*enum))
+	}
+	if *enum != ProcessBpfTypeChecker(*val) {
+		return fmt.Errorf("ProcessBpfTypeChecker: ProcessBpfType has value %s which does not match expected value %s", (*val), tetragon.ProcessBpfType(*enum))
 	}
 	return nil
 }

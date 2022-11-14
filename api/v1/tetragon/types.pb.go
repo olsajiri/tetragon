@@ -125,6 +125,14 @@ func (event *ProcessLoader) Encapsulate() IsGetEventsResponse_Event {
 	}
 }
 
+// Encapsulate implements the Event interface.
+// Returns the event wrapped by its GetEventsResponse_* type.
+func (event *ProcessBpf) Encapsulate() IsGetEventsResponse_Event {
+	return &GetEventsResponse_ProcessBpf{
+		ProcessBpf: event,
+	}
+}
+
 // UnwrapGetEventsResponse gets the inner event type from a GetEventsResponse
 func UnwrapGetEventsResponse(response *GetEventsResponse) interface{} {
 	event := response.GetEvent()
@@ -144,6 +152,8 @@ func UnwrapGetEventsResponse(response *GetEventsResponse) interface{} {
 		return ev.Test
 	case *GetEventsResponse_ProcessLoader:
 		return ev.ProcessLoader
+	case *GetEventsResponse_ProcessBpf:
+		return ev.ProcessBpf
 	}
 	return nil
 }

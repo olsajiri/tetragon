@@ -201,6 +201,55 @@ func (HealthStatusResult) EnumDescriptor() ([]byte, []int) {
 	return file_tetragon_tetragon_proto_rawDescGZIP(), []int{2}
 }
 
+type ProcessBpfType int32
+
+const (
+	ProcessBpfType_BPF_UNDEF  ProcessBpfType = 0
+	ProcessBpfType_BPF_LOAD   ProcessBpfType = 1
+	ProcessBpfType_BPF_UNLOAD ProcessBpfType = 2
+)
+
+// Enum value maps for ProcessBpfType.
+var (
+	ProcessBpfType_name = map[int32]string{
+		0: "BPF_UNDEF",
+		1: "BPF_LOAD",
+		2: "BPF_UNLOAD",
+	}
+	ProcessBpfType_value = map[string]int32{
+		"BPF_UNDEF":  0,
+		"BPF_LOAD":   1,
+		"BPF_UNLOAD": 2,
+	}
+)
+
+func (x ProcessBpfType) Enum() *ProcessBpfType {
+	p := new(ProcessBpfType)
+	*p = x
+	return p
+}
+
+func (x ProcessBpfType) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (ProcessBpfType) Descriptor() protoreflect.EnumDescriptor {
+	return file_tetragon_tetragon_proto_enumTypes[3].Descriptor()
+}
+
+func (ProcessBpfType) Type() protoreflect.EnumType {
+	return &file_tetragon_tetragon_proto_enumTypes[3]
+}
+
+func (x ProcessBpfType) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use ProcessBpfType.Descriptor instead.
+func (ProcessBpfType) EnumDescriptor() ([]byte, []int) {
+	return file_tetragon_tetragon_proto_rawDescGZIP(), []int{3}
+}
+
 type Image struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -2588,6 +2637,69 @@ func (x *ProcessLoader) GetBinary() []*ProcessBinary {
 	return nil
 }
 
+type ProcessBpf struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	Id   uint32         `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	Type ProcessBpfType `protobuf:"varint,2,opt,name=type,proto3,enum=tetragon.ProcessBpfType" json:"type,omitempty"`
+	Tag  []byte         `protobuf:"bytes,3,opt,name=tag,proto3" json:"tag,omitempty"`
+}
+
+func (x *ProcessBpf) Reset() {
+	*x = ProcessBpf{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_tetragon_tetragon_proto_msgTypes[29]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *ProcessBpf) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ProcessBpf) ProtoMessage() {}
+
+func (x *ProcessBpf) ProtoReflect() protoreflect.Message {
+	mi := &file_tetragon_tetragon_proto_msgTypes[29]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ProcessBpf.ProtoReflect.Descriptor instead.
+func (*ProcessBpf) Descriptor() ([]byte, []int) {
+	return file_tetragon_tetragon_proto_rawDescGZIP(), []int{29}
+}
+
+func (x *ProcessBpf) GetId() uint32 {
+	if x != nil {
+		return x.Id
+	}
+	return 0
+}
+
+func (x *ProcessBpf) GetType() ProcessBpfType {
+	if x != nil {
+		return x.Type
+	}
+	return ProcessBpfType_BPF_UNDEF
+}
+
+func (x *ProcessBpf) GetTag() []byte {
+	if x != nil {
+		return x.Tag
+	}
+	return nil
+}
+
 var File_tetragon_tetragon_proto protoreflect.FileDescriptor
 
 var file_tetragon_tetragon_proto_rawDesc = []byte{
@@ -2952,37 +3064,47 @@ var file_tetragon_tetragon_proto_rawDesc = []byte{
 	0x28, 0x0d, 0x52, 0x03, 0x74, 0x69, 0x64, 0x12, 0x2f, 0x0a, 0x06, 0x62, 0x69, 0x6e, 0x61, 0x72,
 	0x79, 0x18, 0x03, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x17, 0x2e, 0x74, 0x65, 0x74, 0x72, 0x61, 0x67,
 	0x6f, 0x6e, 0x2e, 0x50, 0x72, 0x6f, 0x63, 0x65, 0x73, 0x73, 0x42, 0x69, 0x6e, 0x61, 0x72, 0x79,
-	0x52, 0x06, 0x62, 0x69, 0x6e, 0x61, 0x72, 0x79, 0x2a, 0x83, 0x02, 0x0a, 0x0c, 0x4b, 0x70, 0x72,
-	0x6f, 0x62, 0x65, 0x41, 0x63, 0x74, 0x69, 0x6f, 0x6e, 0x12, 0x19, 0x0a, 0x15, 0x4b, 0x50, 0x52,
-	0x4f, 0x42, 0x45, 0x5f, 0x41, 0x43, 0x54, 0x49, 0x4f, 0x4e, 0x5f, 0x55, 0x4e, 0x4b, 0x4e, 0x4f,
-	0x57, 0x4e, 0x10, 0x00, 0x12, 0x16, 0x0a, 0x12, 0x4b, 0x50, 0x52, 0x4f, 0x42, 0x45, 0x5f, 0x41,
-	0x43, 0x54, 0x49, 0x4f, 0x4e, 0x5f, 0x50, 0x4f, 0x53, 0x54, 0x10, 0x01, 0x12, 0x1a, 0x0a, 0x16,
-	0x4b, 0x50, 0x52, 0x4f, 0x42, 0x45, 0x5f, 0x41, 0x43, 0x54, 0x49, 0x4f, 0x4e, 0x5f, 0x46, 0x4f,
-	0x4c, 0x4c, 0x4f, 0x57, 0x46, 0x44, 0x10, 0x02, 0x12, 0x19, 0x0a, 0x15, 0x4b, 0x50, 0x52, 0x4f,
-	0x42, 0x45, 0x5f, 0x41, 0x43, 0x54, 0x49, 0x4f, 0x4e, 0x5f, 0x53, 0x49, 0x47, 0x4b, 0x49, 0x4c,
-	0x4c, 0x10, 0x03, 0x12, 0x1c, 0x0a, 0x18, 0x4b, 0x50, 0x52, 0x4f, 0x42, 0x45, 0x5f, 0x41, 0x43,
-	0x54, 0x49, 0x4f, 0x4e, 0x5f, 0x55, 0x4e, 0x46, 0x4f, 0x4c, 0x4c, 0x4f, 0x57, 0x46, 0x44, 0x10,
-	0x04, 0x12, 0x1a, 0x0a, 0x16, 0x4b, 0x50, 0x52, 0x4f, 0x42, 0x45, 0x5f, 0x41, 0x43, 0x54, 0x49,
-	0x4f, 0x4e, 0x5f, 0x4f, 0x56, 0x45, 0x52, 0x52, 0x49, 0x44, 0x45, 0x10, 0x05, 0x12, 0x18, 0x0a,
-	0x14, 0x4b, 0x50, 0x52, 0x4f, 0x42, 0x45, 0x5f, 0x41, 0x43, 0x54, 0x49, 0x4f, 0x4e, 0x5f, 0x43,
-	0x4f, 0x50, 0x59, 0x46, 0x44, 0x10, 0x06, 0x12, 0x18, 0x0a, 0x14, 0x4b, 0x50, 0x52, 0x4f, 0x42,
-	0x45, 0x5f, 0x41, 0x43, 0x54, 0x49, 0x4f, 0x4e, 0x5f, 0x47, 0x45, 0x54, 0x55, 0x52, 0x4c, 0x10,
-	0x07, 0x12, 0x1b, 0x0a, 0x17, 0x4b, 0x50, 0x52, 0x4f, 0x42, 0x45, 0x5f, 0x41, 0x43, 0x54, 0x49,
-	0x4f, 0x4e, 0x5f, 0x44, 0x4e, 0x53, 0x4c, 0x4f, 0x4f, 0x4b, 0x55, 0x50, 0x10, 0x08, 0x2a, 0x4f,
-	0x0a, 0x10, 0x48, 0x65, 0x61, 0x6c, 0x74, 0x68, 0x53, 0x74, 0x61, 0x74, 0x75, 0x73, 0x54, 0x79,
-	0x70, 0x65, 0x12, 0x1c, 0x0a, 0x18, 0x48, 0x45, 0x41, 0x4c, 0x54, 0x48, 0x5f, 0x53, 0x54, 0x41,
-	0x54, 0x55, 0x53, 0x5f, 0x54, 0x59, 0x50, 0x45, 0x5f, 0x55, 0x4e, 0x44, 0x45, 0x46, 0x10, 0x00,
-	0x12, 0x1d, 0x0a, 0x19, 0x48, 0x45, 0x41, 0x4c, 0x54, 0x48, 0x5f, 0x53, 0x54, 0x41, 0x54, 0x55,
-	0x53, 0x5f, 0x54, 0x59, 0x50, 0x45, 0x5f, 0x53, 0x54, 0x41, 0x54, 0x55, 0x53, 0x10, 0x01, 0x2a,
-	0x7c, 0x0a, 0x12, 0x48, 0x65, 0x61, 0x6c, 0x74, 0x68, 0x53, 0x74, 0x61, 0x74, 0x75, 0x73, 0x52,
-	0x65, 0x73, 0x75, 0x6c, 0x74, 0x12, 0x17, 0x0a, 0x13, 0x48, 0x45, 0x41, 0x4c, 0x54, 0x48, 0x5f,
-	0x53, 0x54, 0x41, 0x54, 0x55, 0x53, 0x5f, 0x55, 0x4e, 0x44, 0x45, 0x46, 0x10, 0x00, 0x12, 0x19,
-	0x0a, 0x15, 0x48, 0x45, 0x41, 0x4c, 0x54, 0x48, 0x5f, 0x53, 0x54, 0x41, 0x54, 0x55, 0x53, 0x5f,
-	0x52, 0x55, 0x4e, 0x4e, 0x49, 0x4e, 0x47, 0x10, 0x01, 0x12, 0x19, 0x0a, 0x15, 0x48, 0x45, 0x41,
-	0x4c, 0x54, 0x48, 0x5f, 0x53, 0x54, 0x41, 0x54, 0x55, 0x53, 0x5f, 0x53, 0x54, 0x4f, 0x50, 0x50,
-	0x45, 0x44, 0x10, 0x02, 0x12, 0x17, 0x0a, 0x13, 0x48, 0x45, 0x41, 0x4c, 0x54, 0x48, 0x5f, 0x53,
-	0x54, 0x41, 0x54, 0x55, 0x53, 0x5f, 0x45, 0x52, 0x52, 0x4f, 0x52, 0x10, 0x03, 0x62, 0x06, 0x70,
-	0x72, 0x6f, 0x74, 0x6f, 0x33,
+	0x52, 0x06, 0x62, 0x69, 0x6e, 0x61, 0x72, 0x79, 0x22, 0x5c, 0x0a, 0x0a, 0x50, 0x72, 0x6f, 0x63,
+	0x65, 0x73, 0x73, 0x42, 0x70, 0x66, 0x12, 0x0e, 0x0a, 0x02, 0x69, 0x64, 0x18, 0x01, 0x20, 0x01,
+	0x28, 0x0d, 0x52, 0x02, 0x69, 0x64, 0x12, 0x2c, 0x0a, 0x04, 0x74, 0x79, 0x70, 0x65, 0x18, 0x02,
+	0x20, 0x01, 0x28, 0x0e, 0x32, 0x18, 0x2e, 0x74, 0x65, 0x74, 0x72, 0x61, 0x67, 0x6f, 0x6e, 0x2e,
+	0x50, 0x72, 0x6f, 0x63, 0x65, 0x73, 0x73, 0x42, 0x70, 0x66, 0x54, 0x79, 0x70, 0x65, 0x52, 0x04,
+	0x74, 0x79, 0x70, 0x65, 0x12, 0x10, 0x0a, 0x03, 0x74, 0x61, 0x67, 0x18, 0x03, 0x20, 0x01, 0x28,
+	0x0c, 0x52, 0x03, 0x74, 0x61, 0x67, 0x2a, 0x83, 0x02, 0x0a, 0x0c, 0x4b, 0x70, 0x72, 0x6f, 0x62,
+	0x65, 0x41, 0x63, 0x74, 0x69, 0x6f, 0x6e, 0x12, 0x19, 0x0a, 0x15, 0x4b, 0x50, 0x52, 0x4f, 0x42,
+	0x45, 0x5f, 0x41, 0x43, 0x54, 0x49, 0x4f, 0x4e, 0x5f, 0x55, 0x4e, 0x4b, 0x4e, 0x4f, 0x57, 0x4e,
+	0x10, 0x00, 0x12, 0x16, 0x0a, 0x12, 0x4b, 0x50, 0x52, 0x4f, 0x42, 0x45, 0x5f, 0x41, 0x43, 0x54,
+	0x49, 0x4f, 0x4e, 0x5f, 0x50, 0x4f, 0x53, 0x54, 0x10, 0x01, 0x12, 0x1a, 0x0a, 0x16, 0x4b, 0x50,
+	0x52, 0x4f, 0x42, 0x45, 0x5f, 0x41, 0x43, 0x54, 0x49, 0x4f, 0x4e, 0x5f, 0x46, 0x4f, 0x4c, 0x4c,
+	0x4f, 0x57, 0x46, 0x44, 0x10, 0x02, 0x12, 0x19, 0x0a, 0x15, 0x4b, 0x50, 0x52, 0x4f, 0x42, 0x45,
+	0x5f, 0x41, 0x43, 0x54, 0x49, 0x4f, 0x4e, 0x5f, 0x53, 0x49, 0x47, 0x4b, 0x49, 0x4c, 0x4c, 0x10,
+	0x03, 0x12, 0x1c, 0x0a, 0x18, 0x4b, 0x50, 0x52, 0x4f, 0x42, 0x45, 0x5f, 0x41, 0x43, 0x54, 0x49,
+	0x4f, 0x4e, 0x5f, 0x55, 0x4e, 0x46, 0x4f, 0x4c, 0x4c, 0x4f, 0x57, 0x46, 0x44, 0x10, 0x04, 0x12,
+	0x1a, 0x0a, 0x16, 0x4b, 0x50, 0x52, 0x4f, 0x42, 0x45, 0x5f, 0x41, 0x43, 0x54, 0x49, 0x4f, 0x4e,
+	0x5f, 0x4f, 0x56, 0x45, 0x52, 0x52, 0x49, 0x44, 0x45, 0x10, 0x05, 0x12, 0x18, 0x0a, 0x14, 0x4b,
+	0x50, 0x52, 0x4f, 0x42, 0x45, 0x5f, 0x41, 0x43, 0x54, 0x49, 0x4f, 0x4e, 0x5f, 0x43, 0x4f, 0x50,
+	0x59, 0x46, 0x44, 0x10, 0x06, 0x12, 0x18, 0x0a, 0x14, 0x4b, 0x50, 0x52, 0x4f, 0x42, 0x45, 0x5f,
+	0x41, 0x43, 0x54, 0x49, 0x4f, 0x4e, 0x5f, 0x47, 0x45, 0x54, 0x55, 0x52, 0x4c, 0x10, 0x07, 0x12,
+	0x1b, 0x0a, 0x17, 0x4b, 0x50, 0x52, 0x4f, 0x42, 0x45, 0x5f, 0x41, 0x43, 0x54, 0x49, 0x4f, 0x4e,
+	0x5f, 0x44, 0x4e, 0x53, 0x4c, 0x4f, 0x4f, 0x4b, 0x55, 0x50, 0x10, 0x08, 0x2a, 0x4f, 0x0a, 0x10,
+	0x48, 0x65, 0x61, 0x6c, 0x74, 0x68, 0x53, 0x74, 0x61, 0x74, 0x75, 0x73, 0x54, 0x79, 0x70, 0x65,
+	0x12, 0x1c, 0x0a, 0x18, 0x48, 0x45, 0x41, 0x4c, 0x54, 0x48, 0x5f, 0x53, 0x54, 0x41, 0x54, 0x55,
+	0x53, 0x5f, 0x54, 0x59, 0x50, 0x45, 0x5f, 0x55, 0x4e, 0x44, 0x45, 0x46, 0x10, 0x00, 0x12, 0x1d,
+	0x0a, 0x19, 0x48, 0x45, 0x41, 0x4c, 0x54, 0x48, 0x5f, 0x53, 0x54, 0x41, 0x54, 0x55, 0x53, 0x5f,
+	0x54, 0x59, 0x50, 0x45, 0x5f, 0x53, 0x54, 0x41, 0x54, 0x55, 0x53, 0x10, 0x01, 0x2a, 0x7c, 0x0a,
+	0x12, 0x48, 0x65, 0x61, 0x6c, 0x74, 0x68, 0x53, 0x74, 0x61, 0x74, 0x75, 0x73, 0x52, 0x65, 0x73,
+	0x75, 0x6c, 0x74, 0x12, 0x17, 0x0a, 0x13, 0x48, 0x45, 0x41, 0x4c, 0x54, 0x48, 0x5f, 0x53, 0x54,
+	0x41, 0x54, 0x55, 0x53, 0x5f, 0x55, 0x4e, 0x44, 0x45, 0x46, 0x10, 0x00, 0x12, 0x19, 0x0a, 0x15,
+	0x48, 0x45, 0x41, 0x4c, 0x54, 0x48, 0x5f, 0x53, 0x54, 0x41, 0x54, 0x55, 0x53, 0x5f, 0x52, 0x55,
+	0x4e, 0x4e, 0x49, 0x4e, 0x47, 0x10, 0x01, 0x12, 0x19, 0x0a, 0x15, 0x48, 0x45, 0x41, 0x4c, 0x54,
+	0x48, 0x5f, 0x53, 0x54, 0x41, 0x54, 0x55, 0x53, 0x5f, 0x53, 0x54, 0x4f, 0x50, 0x50, 0x45, 0x44,
+	0x10, 0x02, 0x12, 0x17, 0x0a, 0x13, 0x48, 0x45, 0x41, 0x4c, 0x54, 0x48, 0x5f, 0x53, 0x54, 0x41,
+	0x54, 0x55, 0x53, 0x5f, 0x45, 0x52, 0x52, 0x4f, 0x52, 0x10, 0x03, 0x2a, 0x3d, 0x0a, 0x0e, 0x50,
+	0x72, 0x6f, 0x63, 0x65, 0x73, 0x73, 0x42, 0x70, 0x66, 0x54, 0x79, 0x70, 0x65, 0x12, 0x0d, 0x0a,
+	0x09, 0x42, 0x50, 0x46, 0x5f, 0x55, 0x4e, 0x44, 0x45, 0x46, 0x10, 0x00, 0x12, 0x0c, 0x0a, 0x08,
+	0x42, 0x50, 0x46, 0x5f, 0x4c, 0x4f, 0x41, 0x44, 0x10, 0x01, 0x12, 0x0e, 0x0a, 0x0a, 0x42, 0x50,
+	0x46, 0x5f, 0x55, 0x4e, 0x4c, 0x4f, 0x41, 0x44, 0x10, 0x02, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74,
+	0x6f, 0x33,
 }
 
 var (
@@ -2997,115 +3119,118 @@ func file_tetragon_tetragon_proto_rawDescGZIP() []byte {
 	return file_tetragon_tetragon_proto_rawDescData
 }
 
-var file_tetragon_tetragon_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
-var file_tetragon_tetragon_proto_msgTypes = make([]protoimpl.MessageInfo, 30)
+var file_tetragon_tetragon_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
+var file_tetragon_tetragon_proto_msgTypes = make([]protoimpl.MessageInfo, 31)
 var file_tetragon_tetragon_proto_goTypes = []interface{}{
 	(KprobeAction)(0),               // 0: tetragon.KprobeAction
 	(HealthStatusType)(0),           // 1: tetragon.HealthStatusType
 	(HealthStatusResult)(0),         // 2: tetragon.HealthStatusResult
-	(*Image)(nil),                   // 3: tetragon.Image
-	(*Container)(nil),               // 4: tetragon.Container
-	(*Pod)(nil),                     // 5: tetragon.Pod
-	(*Capabilities)(nil),            // 6: tetragon.Capabilities
-	(*Namespace)(nil),               // 7: tetragon.Namespace
-	(*Namespaces)(nil),              // 8: tetragon.Namespaces
-	(*Process)(nil),                 // 9: tetragon.Process
-	(*ProcessExec)(nil),             // 10: tetragon.ProcessExec
-	(*ProcessExit)(nil),             // 11: tetragon.ProcessExit
-	(*KprobeSock)(nil),              // 12: tetragon.KprobeSock
-	(*KprobeSkb)(nil),               // 13: tetragon.KprobeSkb
-	(*KprobePath)(nil),              // 14: tetragon.KprobePath
-	(*KprobeFile)(nil),              // 15: tetragon.KprobeFile
-	(*KprobeTruncatedBytes)(nil),    // 16: tetragon.KprobeTruncatedBytes
-	(*KprobeCred)(nil),              // 17: tetragon.KprobeCred
-	(*KprobeCapability)(nil),        // 18: tetragon.KprobeCapability
-	(*KprobeUserNamespace)(nil),     // 19: tetragon.KprobeUserNamespace
-	(*KprobeBpfAttr)(nil),           // 20: tetragon.KprobeBpfAttr
-	(*KprobePerfEvent)(nil),         // 21: tetragon.KprobePerfEvent
-	(*KprobeBpfMap)(nil),            // 22: tetragon.KprobeBpfMap
-	(*KprobeArgument)(nil),          // 23: tetragon.KprobeArgument
-	(*ProcessKprobe)(nil),           // 24: tetragon.ProcessKprobe
-	(*ProcessTracepoint)(nil),       // 25: tetragon.ProcessTracepoint
-	(*Test)(nil),                    // 26: tetragon.Test
-	(*GetHealthStatusRequest)(nil),  // 27: tetragon.GetHealthStatusRequest
-	(*HealthStatus)(nil),            // 28: tetragon.HealthStatus
-	(*GetHealthStatusResponse)(nil), // 29: tetragon.GetHealthStatusResponse
-	(*ProcessBinary)(nil),           // 30: tetragon.ProcessBinary
-	(*ProcessLoader)(nil),           // 31: tetragon.ProcessLoader
-	nil,                             // 32: tetragon.Pod.PodLabelsEntry
-	(*timestamppb.Timestamp)(nil),   // 33: google.protobuf.Timestamp
-	(*wrapperspb.UInt32Value)(nil),  // 34: google.protobuf.UInt32Value
-	(CapabilitiesType)(0),           // 35: tetragon.CapabilitiesType
-	(*wrapperspb.Int32Value)(nil),   // 36: google.protobuf.Int32Value
+	(ProcessBpfType)(0),             // 3: tetragon.ProcessBpfType
+	(*Image)(nil),                   // 4: tetragon.Image
+	(*Container)(nil),               // 5: tetragon.Container
+	(*Pod)(nil),                     // 6: tetragon.Pod
+	(*Capabilities)(nil),            // 7: tetragon.Capabilities
+	(*Namespace)(nil),               // 8: tetragon.Namespace
+	(*Namespaces)(nil),              // 9: tetragon.Namespaces
+	(*Process)(nil),                 // 10: tetragon.Process
+	(*ProcessExec)(nil),             // 11: tetragon.ProcessExec
+	(*ProcessExit)(nil),             // 12: tetragon.ProcessExit
+	(*KprobeSock)(nil),              // 13: tetragon.KprobeSock
+	(*KprobeSkb)(nil),               // 14: tetragon.KprobeSkb
+	(*KprobePath)(nil),              // 15: tetragon.KprobePath
+	(*KprobeFile)(nil),              // 16: tetragon.KprobeFile
+	(*KprobeTruncatedBytes)(nil),    // 17: tetragon.KprobeTruncatedBytes
+	(*KprobeCred)(nil),              // 18: tetragon.KprobeCred
+	(*KprobeCapability)(nil),        // 19: tetragon.KprobeCapability
+	(*KprobeUserNamespace)(nil),     // 20: tetragon.KprobeUserNamespace
+	(*KprobeBpfAttr)(nil),           // 21: tetragon.KprobeBpfAttr
+	(*KprobePerfEvent)(nil),         // 22: tetragon.KprobePerfEvent
+	(*KprobeBpfMap)(nil),            // 23: tetragon.KprobeBpfMap
+	(*KprobeArgument)(nil),          // 24: tetragon.KprobeArgument
+	(*ProcessKprobe)(nil),           // 25: tetragon.ProcessKprobe
+	(*ProcessTracepoint)(nil),       // 26: tetragon.ProcessTracepoint
+	(*Test)(nil),                    // 27: tetragon.Test
+	(*GetHealthStatusRequest)(nil),  // 28: tetragon.GetHealthStatusRequest
+	(*HealthStatus)(nil),            // 29: tetragon.HealthStatus
+	(*GetHealthStatusResponse)(nil), // 30: tetragon.GetHealthStatusResponse
+	(*ProcessBinary)(nil),           // 31: tetragon.ProcessBinary
+	(*ProcessLoader)(nil),           // 32: tetragon.ProcessLoader
+	(*ProcessBpf)(nil),              // 33: tetragon.ProcessBpf
+	nil,                             // 34: tetragon.Pod.PodLabelsEntry
+	(*timestamppb.Timestamp)(nil),   // 35: google.protobuf.Timestamp
+	(*wrapperspb.UInt32Value)(nil),  // 36: google.protobuf.UInt32Value
+	(CapabilitiesType)(0),           // 37: tetragon.CapabilitiesType
+	(*wrapperspb.Int32Value)(nil),   // 38: google.protobuf.Int32Value
 }
 var file_tetragon_tetragon_proto_depIdxs = []int32{
-	3,  // 0: tetragon.Container.image:type_name -> tetragon.Image
-	33, // 1: tetragon.Container.start_time:type_name -> google.protobuf.Timestamp
-	34, // 2: tetragon.Container.pid:type_name -> google.protobuf.UInt32Value
-	4,  // 3: tetragon.Pod.container:type_name -> tetragon.Container
-	32, // 4: tetragon.Pod.pod_labels:type_name -> tetragon.Pod.PodLabelsEntry
-	35, // 5: tetragon.Capabilities.permitted:type_name -> tetragon.CapabilitiesType
-	35, // 6: tetragon.Capabilities.effective:type_name -> tetragon.CapabilitiesType
-	35, // 7: tetragon.Capabilities.inheritable:type_name -> tetragon.CapabilitiesType
-	7,  // 8: tetragon.Namespaces.uts:type_name -> tetragon.Namespace
-	7,  // 9: tetragon.Namespaces.ipc:type_name -> tetragon.Namespace
-	7,  // 10: tetragon.Namespaces.mnt:type_name -> tetragon.Namespace
-	7,  // 11: tetragon.Namespaces.pid:type_name -> tetragon.Namespace
-	7,  // 12: tetragon.Namespaces.pid_for_children:type_name -> tetragon.Namespace
-	7,  // 13: tetragon.Namespaces.net:type_name -> tetragon.Namespace
-	7,  // 14: tetragon.Namespaces.time:type_name -> tetragon.Namespace
-	7,  // 15: tetragon.Namespaces.time_for_children:type_name -> tetragon.Namespace
-	7,  // 16: tetragon.Namespaces.cgroup:type_name -> tetragon.Namespace
-	7,  // 17: tetragon.Namespaces.user:type_name -> tetragon.Namespace
-	34, // 18: tetragon.Process.pid:type_name -> google.protobuf.UInt32Value
-	34, // 19: tetragon.Process.uid:type_name -> google.protobuf.UInt32Value
-	33, // 20: tetragon.Process.start_time:type_name -> google.protobuf.Timestamp
-	34, // 21: tetragon.Process.auid:type_name -> google.protobuf.UInt32Value
-	5,  // 22: tetragon.Process.pod:type_name -> tetragon.Pod
-	6,  // 23: tetragon.Process.cap:type_name -> tetragon.Capabilities
-	8,  // 24: tetragon.Process.ns:type_name -> tetragon.Namespaces
-	9,  // 25: tetragon.ProcessExec.process:type_name -> tetragon.Process
-	9,  // 26: tetragon.ProcessExec.parent:type_name -> tetragon.Process
-	9,  // 27: tetragon.ProcessExec.ancestors:type_name -> tetragon.Process
-	9,  // 28: tetragon.ProcessExit.process:type_name -> tetragon.Process
-	9,  // 29: tetragon.ProcessExit.parent:type_name -> tetragon.Process
-	35, // 30: tetragon.KprobeCred.permitted:type_name -> tetragon.CapabilitiesType
-	35, // 31: tetragon.KprobeCred.effective:type_name -> tetragon.CapabilitiesType
-	35, // 32: tetragon.KprobeCred.inheritable:type_name -> tetragon.CapabilitiesType
-	36, // 33: tetragon.KprobeCapability.value:type_name -> google.protobuf.Int32Value
-	36, // 34: tetragon.KprobeUserNamespace.level:type_name -> google.protobuf.Int32Value
-	34, // 35: tetragon.KprobeUserNamespace.owner:type_name -> google.protobuf.UInt32Value
-	34, // 36: tetragon.KprobeUserNamespace.group:type_name -> google.protobuf.UInt32Value
-	7,  // 37: tetragon.KprobeUserNamespace.ns:type_name -> tetragon.Namespace
-	13, // 38: tetragon.KprobeArgument.skb_arg:type_name -> tetragon.KprobeSkb
-	14, // 39: tetragon.KprobeArgument.path_arg:type_name -> tetragon.KprobePath
-	15, // 40: tetragon.KprobeArgument.file_arg:type_name -> tetragon.KprobeFile
-	16, // 41: tetragon.KprobeArgument.truncated_bytes_arg:type_name -> tetragon.KprobeTruncatedBytes
-	12, // 42: tetragon.KprobeArgument.sock_arg:type_name -> tetragon.KprobeSock
-	17, // 43: tetragon.KprobeArgument.cred_arg:type_name -> tetragon.KprobeCred
-	20, // 44: tetragon.KprobeArgument.bpf_attr_arg:type_name -> tetragon.KprobeBpfAttr
-	21, // 45: tetragon.KprobeArgument.perf_event_arg:type_name -> tetragon.KprobePerfEvent
-	22, // 46: tetragon.KprobeArgument.bpf_map_arg:type_name -> tetragon.KprobeBpfMap
-	19, // 47: tetragon.KprobeArgument.user_namespace_arg:type_name -> tetragon.KprobeUserNamespace
-	18, // 48: tetragon.KprobeArgument.capability_arg:type_name -> tetragon.KprobeCapability
-	9,  // 49: tetragon.ProcessKprobe.process:type_name -> tetragon.Process
-	9,  // 50: tetragon.ProcessKprobe.parent:type_name -> tetragon.Process
-	23, // 51: tetragon.ProcessKprobe.args:type_name -> tetragon.KprobeArgument
-	23, // 52: tetragon.ProcessKprobe.return:type_name -> tetragon.KprobeArgument
+	4,  // 0: tetragon.Container.image:type_name -> tetragon.Image
+	35, // 1: tetragon.Container.start_time:type_name -> google.protobuf.Timestamp
+	36, // 2: tetragon.Container.pid:type_name -> google.protobuf.UInt32Value
+	5,  // 3: tetragon.Pod.container:type_name -> tetragon.Container
+	34, // 4: tetragon.Pod.pod_labels:type_name -> tetragon.Pod.PodLabelsEntry
+	37, // 5: tetragon.Capabilities.permitted:type_name -> tetragon.CapabilitiesType
+	37, // 6: tetragon.Capabilities.effective:type_name -> tetragon.CapabilitiesType
+	37, // 7: tetragon.Capabilities.inheritable:type_name -> tetragon.CapabilitiesType
+	8,  // 8: tetragon.Namespaces.uts:type_name -> tetragon.Namespace
+	8,  // 9: tetragon.Namespaces.ipc:type_name -> tetragon.Namespace
+	8,  // 10: tetragon.Namespaces.mnt:type_name -> tetragon.Namespace
+	8,  // 11: tetragon.Namespaces.pid:type_name -> tetragon.Namespace
+	8,  // 12: tetragon.Namespaces.pid_for_children:type_name -> tetragon.Namespace
+	8,  // 13: tetragon.Namespaces.net:type_name -> tetragon.Namespace
+	8,  // 14: tetragon.Namespaces.time:type_name -> tetragon.Namespace
+	8,  // 15: tetragon.Namespaces.time_for_children:type_name -> tetragon.Namespace
+	8,  // 16: tetragon.Namespaces.cgroup:type_name -> tetragon.Namespace
+	8,  // 17: tetragon.Namespaces.user:type_name -> tetragon.Namespace
+	36, // 18: tetragon.Process.pid:type_name -> google.protobuf.UInt32Value
+	36, // 19: tetragon.Process.uid:type_name -> google.protobuf.UInt32Value
+	35, // 20: tetragon.Process.start_time:type_name -> google.protobuf.Timestamp
+	36, // 21: tetragon.Process.auid:type_name -> google.protobuf.UInt32Value
+	6,  // 22: tetragon.Process.pod:type_name -> tetragon.Pod
+	7,  // 23: tetragon.Process.cap:type_name -> tetragon.Capabilities
+	9,  // 24: tetragon.Process.ns:type_name -> tetragon.Namespaces
+	10, // 25: tetragon.ProcessExec.process:type_name -> tetragon.Process
+	10, // 26: tetragon.ProcessExec.parent:type_name -> tetragon.Process
+	10, // 27: tetragon.ProcessExec.ancestors:type_name -> tetragon.Process
+	10, // 28: tetragon.ProcessExit.process:type_name -> tetragon.Process
+	10, // 29: tetragon.ProcessExit.parent:type_name -> tetragon.Process
+	37, // 30: tetragon.KprobeCred.permitted:type_name -> tetragon.CapabilitiesType
+	37, // 31: tetragon.KprobeCred.effective:type_name -> tetragon.CapabilitiesType
+	37, // 32: tetragon.KprobeCred.inheritable:type_name -> tetragon.CapabilitiesType
+	38, // 33: tetragon.KprobeCapability.value:type_name -> google.protobuf.Int32Value
+	38, // 34: tetragon.KprobeUserNamespace.level:type_name -> google.protobuf.Int32Value
+	36, // 35: tetragon.KprobeUserNamespace.owner:type_name -> google.protobuf.UInt32Value
+	36, // 36: tetragon.KprobeUserNamespace.group:type_name -> google.protobuf.UInt32Value
+	8,  // 37: tetragon.KprobeUserNamespace.ns:type_name -> tetragon.Namespace
+	14, // 38: tetragon.KprobeArgument.skb_arg:type_name -> tetragon.KprobeSkb
+	15, // 39: tetragon.KprobeArgument.path_arg:type_name -> tetragon.KprobePath
+	16, // 40: tetragon.KprobeArgument.file_arg:type_name -> tetragon.KprobeFile
+	17, // 41: tetragon.KprobeArgument.truncated_bytes_arg:type_name -> tetragon.KprobeTruncatedBytes
+	13, // 42: tetragon.KprobeArgument.sock_arg:type_name -> tetragon.KprobeSock
+	18, // 43: tetragon.KprobeArgument.cred_arg:type_name -> tetragon.KprobeCred
+	21, // 44: tetragon.KprobeArgument.bpf_attr_arg:type_name -> tetragon.KprobeBpfAttr
+	22, // 45: tetragon.KprobeArgument.perf_event_arg:type_name -> tetragon.KprobePerfEvent
+	23, // 46: tetragon.KprobeArgument.bpf_map_arg:type_name -> tetragon.KprobeBpfMap
+	20, // 47: tetragon.KprobeArgument.user_namespace_arg:type_name -> tetragon.KprobeUserNamespace
+	19, // 48: tetragon.KprobeArgument.capability_arg:type_name -> tetragon.KprobeCapability
+	10, // 49: tetragon.ProcessKprobe.process:type_name -> tetragon.Process
+	10, // 50: tetragon.ProcessKprobe.parent:type_name -> tetragon.Process
+	24, // 51: tetragon.ProcessKprobe.args:type_name -> tetragon.KprobeArgument
+	24, // 52: tetragon.ProcessKprobe.return:type_name -> tetragon.KprobeArgument
 	0,  // 53: tetragon.ProcessKprobe.action:type_name -> tetragon.KprobeAction
-	9,  // 54: tetragon.ProcessTracepoint.process:type_name -> tetragon.Process
-	9,  // 55: tetragon.ProcessTracepoint.parent:type_name -> tetragon.Process
-	23, // 56: tetragon.ProcessTracepoint.args:type_name -> tetragon.KprobeArgument
+	10, // 54: tetragon.ProcessTracepoint.process:type_name -> tetragon.Process
+	10, // 55: tetragon.ProcessTracepoint.parent:type_name -> tetragon.Process
+	24, // 56: tetragon.ProcessTracepoint.args:type_name -> tetragon.KprobeArgument
 	1,  // 57: tetragon.GetHealthStatusRequest.event_set:type_name -> tetragon.HealthStatusType
 	1,  // 58: tetragon.HealthStatus.event:type_name -> tetragon.HealthStatusType
 	2,  // 59: tetragon.HealthStatus.status:type_name -> tetragon.HealthStatusResult
-	28, // 60: tetragon.GetHealthStatusResponse.health_status:type_name -> tetragon.HealthStatus
-	30, // 61: tetragon.ProcessLoader.binary:type_name -> tetragon.ProcessBinary
-	62, // [62:62] is the sub-list for method output_type
-	62, // [62:62] is the sub-list for method input_type
-	62, // [62:62] is the sub-list for extension type_name
-	62, // [62:62] is the sub-list for extension extendee
-	0,  // [0:62] is the sub-list for field type_name
+	29, // 60: tetragon.GetHealthStatusResponse.health_status:type_name -> tetragon.HealthStatus
+	31, // 61: tetragon.ProcessLoader.binary:type_name -> tetragon.ProcessBinary
+	3,  // 62: tetragon.ProcessBpf.type:type_name -> tetragon.ProcessBpfType
+	63, // [63:63] is the sub-list for method output_type
+	63, // [63:63] is the sub-list for method input_type
+	63, // [63:63] is the sub-list for extension type_name
+	63, // [63:63] is the sub-list for extension extendee
+	0,  // [0:63] is the sub-list for field type_name
 }
 
 func init() { file_tetragon_tetragon_proto_init() }
@@ -3463,6 +3588,18 @@ func file_tetragon_tetragon_proto_init() {
 				return nil
 			}
 		}
+		file_tetragon_tetragon_proto_msgTypes[29].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*ProcessBpf); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
 	}
 	file_tetragon_tetragon_proto_msgTypes[20].OneofWrappers = []interface{}{
 		(*KprobeArgument_StringArg)(nil),
@@ -3488,8 +3625,8 @@ func file_tetragon_tetragon_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: file_tetragon_tetragon_proto_rawDesc,
-			NumEnums:      3,
-			NumMessages:   30,
+			NumEnums:      4,
+			NumMessages:   31,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

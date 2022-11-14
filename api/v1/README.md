@@ -31,6 +31,7 @@
     - [Pod.PodLabelsEntry](#tetragon-Pod-PodLabelsEntry)
     - [Process](#tetragon-Process)
     - [ProcessBinary](#tetragon-ProcessBinary)
+    - [ProcessBpf](#tetragon-ProcessBpf)
     - [ProcessExec](#tetragon-ProcessExec)
     - [ProcessExit](#tetragon-ProcessExit)
     - [ProcessKprobe](#tetragon-ProcessKprobe)
@@ -41,6 +42,7 @@
     - [HealthStatusResult](#tetragon-HealthStatusResult)
     - [HealthStatusType](#tetragon-HealthStatusType)
     - [KprobeAction](#tetragon-KprobeAction)
+    - [ProcessBpfType](#tetragon-ProcessBpfType)
   
 - [tetragon/events.proto](#tetragon_events-proto)
     - [AggregationInfo](#tetragon-AggregationInfo)
@@ -616,6 +618,23 @@
 
 
 
+<a name="tetragon-ProcessBpf"></a>
+
+### ProcessBpf
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| id | [uint32](#uint32) |  |  |
+| type | [ProcessBpfType](#tetragon-ProcessBpfType) |  |  |
+| tag | [bytes](#bytes) |  |  |
+
+
+
+
+
+
 <a name="tetragon-ProcessExec"></a>
 
 ### ProcessExec
@@ -771,6 +790,19 @@
 | KPROBE_ACTION_DNSLOOKUP | 8 |  |
 
 
+
+<a name="tetragon-ProcessBpfType"></a>
+
+### ProcessBpfType
+
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| BPF_UNDEF | 0 |  |
+| BPF_LOAD | 1 |  |
+| BPF_UNLOAD | 2 |  |
+
+
  
 
  
@@ -893,6 +925,7 @@ Note that currently only process_accept and process_connect events are aggregate
 | process_kprobe | [ProcessKprobe](#tetragon-ProcessKprobe) |  |  |
 | process_tracepoint | [ProcessTracepoint](#tetragon-ProcessTracepoint) |  |  |
 | process_loader | [ProcessLoader](#tetragon-ProcessLoader) |  |  |
+| process_bpf | [ProcessBpf](#tetragon-ProcessBpf) |  |  |
 | test | [Test](#tetragon-Test) |  |  |
 | node_name | [string](#string) |  | Name of the node where this event was observed. |
 | time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | Timestamp at which this event was observed.
@@ -923,6 +956,7 @@ GetEventsResponse event oneof.
 | PROCESS_KPROBE | 9 |  |
 | PROCESS_TRACEPOINT | 10 |  |
 | PROCESS_LOADER | 11 |  |
+| PROCESS_BPF | 12 |  |
 | TEST | 40000 |  |
 
 

@@ -288,3 +288,15 @@ message ProcessLoader {
 	uint32 tid = 2;
 	repeated ProcessBinary binary = 3;
 }
+
+enum ProcessBpfType {
+	BPF_UNDEF = 0;
+	BPF_LOAD = 1;
+	BPF_UNLOAD = 2;
+}
+
+message ProcessBpf {
+	uint32 id = 1;
+	ProcessBpfType type = 2;
+	bytes tag = 3;
+}
