@@ -224,6 +224,8 @@ func (k *Observer) runEvents(stopCtx context.Context, ready func()) error {
 		attr.Bits |= unix.PerfBitMmap | unix.PerfBitMmap2 | bpf.PerfBitBuildId
 	}
 
+	attr.Bits |= bpf.PerfBitBpfEvent
+
 	perfReader, err := perf.NewReaderFromAttr(perfMap, rbSize, attr)
 	if err != nil {
 		return fmt.Errorf("creating perf array reader failed: %w", err)

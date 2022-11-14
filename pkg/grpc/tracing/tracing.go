@@ -408,3 +408,51 @@ func (msg *MsgProcessLoaderUnix) Cast(o interface{}) notify.Message {
 	t := o.(MsgProcessLoaderUnix)
 	return &t
 }
+
+type MsgProcessBpfUnix struct {
+	Type uint16
+	Id   uint32
+	Tag  [8]byte
+}
+
+func GetProcessBpf(event *MsgProcessBpfUnix) *tetragon.ProcessBpf {
+	load := tetragon.ProcessBpfType_BPF_LOAD
+	if event.Type == 2 {
+		load = tetragon.ProcessBpfType_BPF_UNLOAD
+	}
+
+	tetragonEvent := &tetragon.ProcessBpf{
+		Id:   event.Id,
+		Tag:  event.Tag[:],
+		Type: load,
+	}
+	return tetragonEvent
+}
+
+func (msg *MsgProcessBpfUnix) Notify() bool {
+	return true
+}
+
+func (msg *MsgProcessBpfUnix) RetryInternal(ev notify.Event, timestamp uint64) (*process.ProcessInternal, error) {
+	return nil, nil
+}
+
+func (msg *MsgProcessBpfUnix) Retry(internal *process.ProcessInternal, ev notify.Event) error {
+	return nil
+}
+
+func (msg *MsgProcessBpfUnix) HandleMessage() *tetragon.GetEventsResponse {
+	k := GetProcessBpf(msg)
+	if k == nil {
+		return nil
+	}
+	return &tetragon.GetEventsResponse{
+		Event:    &tetragon.GetEventsResponse_ProcessBpf{ProcessBpf: k},
+		NodeName: nodeName,
+	}
+}
+
+func (msg *MsgProcessBpfUnix) Cast(o interface{}) notify.Message {
+	t := o.(MsgProcessBpfUnix)
+	return &t
+}

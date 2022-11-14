@@ -104,4 +104,6 @@ const (
 
 	// Build ID flags bit for perf_event_open
 	PerfBitBuildId = unix.CBitFieldMaskBit34
+
+	PerfBitBpfEvent = unix.CBitFieldMaskBit30
 )
