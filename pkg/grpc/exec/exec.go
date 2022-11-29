@@ -24,13 +24,18 @@ import (
 )
 
 var (
-	nodeName = node.GetNodeNameForExport()
+	nodeName  = node.GetNodeNameForExport()
+	execIdMap = map[uint32]string{}
 )
 
 const (
 	ParentRefCnt  = 0
 	ProcessRefCnt = 1
 )
+
+func GetExecId(pid uint32) string {
+	return execIdMap[pid]
+}
 
 func (msg *MsgExecveEventUnix) getCleanupEvent() *MsgProcessCleanupEventUnix {
 	if msg.CleanupProcess.Ktime == 0 {
@@ -51,6 +56,10 @@ func GetProcessExec(event *MsgExecveEventUnix, useCache bool) *tetragon.ProcessE
 
 	parentId := tetragonProcess.ParentExecId
 	processId := tetragonProcess.ExecId
+
+	if _, ok := execIdMap[event.Process.PID]; !ok {
+		execIdMap[event.Process.PID] = processId
+	}
 
 	parent, err := process.Get(parentId)
 	if err == nil {
