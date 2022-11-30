@@ -28,8 +28,9 @@ static inline __attribute__((always_inline)) void event_exit_send(void *ctx,
 	 * catch it and we will quickly delete the entry again.
 	 */
 	enter = execve_map_get_noinit(tgid);
-	if (!enter)
+	if (!enter || enter->exited)
 		return;
+	enter->exited = true;
 	if (enter->key.ktime) {
 		struct task_struct *task =
 			(struct task_struct *)get_current_task();

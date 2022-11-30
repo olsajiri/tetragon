@@ -278,6 +278,7 @@ struct execve_map_value {
 	__u32 pad;
 	struct msg_ns ns;
 	struct msg_capabilities caps;
+	bool exited;
 } __attribute__((packed)) __attribute__((aligned(8)));
 
 struct {
