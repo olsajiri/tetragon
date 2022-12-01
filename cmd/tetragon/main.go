@@ -37,6 +37,7 @@ import (
 	"github.com/cilium/tetragon/pkg/sensors"
 	"github.com/cilium/tetragon/pkg/sensors/base"
 	"github.com/cilium/tetragon/pkg/sensors/program"
+	"github.com/cilium/tetragon/pkg/sensors/tracing"
 	"github.com/cilium/tetragon/pkg/server"
 	"github.com/cilium/tetragon/pkg/unixlisten"
 	"github.com/cilium/tetragon/pkg/version"
@@ -285,6 +286,12 @@ func tetragonExecute() error {
 	// load base sensor
 	if err := base.GetInitialSensor().Load(ctx, observerDir, observerDir, option.Config.CiliumDir); err != nil {
 		return err
+	}
+
+	if bpf.HasLoaderEvents() {
+		if err := tracing.GetLoaderSensor().Load(ctx, observerDir, observerDir, option.Config.CiliumDir); err != nil {
+			return err
+		}
 	}
 
 	// load sensor from configuration file

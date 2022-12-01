@@ -36473,6 +36473,8 @@ struct perf_cgroup_event {
 	} event_id;
 };
 
+#define BUILD_ID_SIZE_MAX 20
+
 struct perf_mmap_event {
 	struct vm_area_struct *vma;
 	const char *file_name;
@@ -36483,6 +36485,9 @@ struct perf_mmap_event {
 	u64 ino_generation;
 	u32 prot;
 	u32 flags;
+	u8  build_id[BUILD_ID_SIZE_MAX];
+	u32 build_id_size;
+
 	struct {
 		struct perf_event_header header;
 		u32 pid;

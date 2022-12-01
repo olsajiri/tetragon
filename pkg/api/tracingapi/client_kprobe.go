@@ -25,6 +25,16 @@ const (
 	KSYM_NAME_LEN    = 128
 )
 
+type MsgLoader struct {
+	Common      processapi.MsgCommon
+	ProcessKey  processapi.MsgExecveKey
+	Pid         uint32
+	BuildIdSize uint32
+	FileLen     uint32
+	BuildId     [20]byte
+	File        [1024]byte
+}
+
 type MsgGenericKprobe struct {
 	Common       processapi.MsgCommon
 	ProcessKey   processapi.MsgExecveKey
