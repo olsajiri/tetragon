@@ -274,6 +274,8 @@ func CheckerFromEvent(event Event) (EventChecker, error) {
 		return NewProcessTracepointChecker().FromProcessTracepoint(ev), nil
 	case *tetragon.Test:
 		return NewTestChecker().FromTest(ev), nil
+	case *tetragon.ProcessLoader:
+		return NewProcessLoaderChecker().FromProcessLoader(ev), nil
 
 	default:
 		return nil, fmt.Errorf("Unhandled event type %T", event)
@@ -313,6 +315,8 @@ func EventFromResponse(response *tetragon.GetEventsResponse) (Event, error) {
 		return ev.ProcessTracepoint, nil
 	case *tetragon.GetEventsResponse_Test:
 		return ev.Test, nil
+	case *tetragon.GetEventsResponse_ProcessLoader:
+		return ev.ProcessLoader, nil
 
 	default:
 		return nil, fmt.Errorf("Unknown event type %T", response.Event)
@@ -1086,6 +1090,94 @@ func (checker *TestChecker) FromTest(event *tetragon.Test) *TestChecker {
 	{
 		val := event.Arg3
 		checker.Arg3 = &val
+	}
+	return checker
+}
+
+// ProcessLoaderChecker implements a checker struct to check a ProcessLoader event
+type ProcessLoaderChecker struct {
+	Process *ProcessChecker       `json:"process,omitempty"`
+	Parent  *ProcessChecker       `json:"parent,omitempty"`
+	Binary  *ProcessBinaryChecker `json:"binary,omitempty"`
+}
+
+// CheckEvent checks a single event and implements the EventChecker interface
+func (checker *ProcessLoaderChecker) CheckEvent(event Event) error {
+	if ev, ok := event.(*tetragon.ProcessLoader); ok {
+		return checker.Check(ev)
+	}
+	return fmt.Errorf("%T is not a ProcessLoader event", event)
+}
+
+// CheckResponse checks a single gRPC response and implements the EventChecker interface
+func (checker *ProcessLoaderChecker) CheckResponse(response *tetragon.GetEventsResponse) error {
+	event, err := EventFromResponse(response)
+	if err != nil {
+		return err
+	}
+	return checker.CheckEvent(event)
+}
+
+// NewProcessLoaderChecker creates a new ProcessLoaderChecker
+func NewProcessLoaderChecker() *ProcessLoaderChecker {
+	return &ProcessLoaderChecker{}
+}
+
+// Check checks a ProcessLoader event
+func (checker *ProcessLoaderChecker) Check(event *tetragon.ProcessLoader) error {
+	if event == nil {
+		return fmt.Errorf("ProcessLoaderChecker: ProcessLoader event is nil")
+	}
+
+	if checker.Process != nil {
+		if err := checker.Process.Check(event.Process); err != nil {
+			return fmt.Errorf("ProcessLoaderChecker: Process check failed: %w", err)
+		}
+	}
+	if checker.Parent != nil {
+		if err := checker.Parent.Check(event.Parent); err != nil {
+			return fmt.Errorf("ProcessLoaderChecker: Parent check failed: %w", err)
+		}
+	}
+	if checker.Binary != nil {
+		if err := checker.Binary.Check(event.Binary); err != nil {
+			return fmt.Errorf("ProcessLoaderChecker: Binary check failed: %w", err)
+		}
+	}
+	return nil
+}
+
+// WithProcess adds a Process check to the ProcessLoaderChecker
+func (checker *ProcessLoaderChecker) WithProcess(check *ProcessChecker) *ProcessLoaderChecker {
+	checker.Process = check
+	return checker
+}
+
+// WithParent adds a Parent check to the ProcessLoaderChecker
+func (checker *ProcessLoaderChecker) WithParent(check *ProcessChecker) *ProcessLoaderChecker {
+	checker.Parent = check
+	return checker
+}
+
+// WithBinary adds a Binary check to the ProcessLoaderChecker
+func (checker *ProcessLoaderChecker) WithBinary(check *ProcessBinaryChecker) *ProcessLoaderChecker {
+	checker.Binary = check
+	return checker
+}
+
+//FromProcessLoader populates the ProcessLoaderChecker using data from a ProcessLoader event
+func (checker *ProcessLoaderChecker) FromProcessLoader(event *tetragon.ProcessLoader) *ProcessLoaderChecker {
+	if event == nil {
+		return checker
+	}
+	if event.Process != nil {
+		checker.Process = NewProcessChecker().FromProcess(event.Process)
+	}
+	if event.Parent != nil {
+		checker.Parent = NewProcessChecker().FromProcess(event.Parent)
+	}
+	if event.Binary != nil {
+		checker.Binary = NewProcessBinaryChecker().FromProcessBinary(event.Binary)
 	}
 	return checker
 }
@@ -3535,6 +3627,58 @@ func (checker *KprobeArgumentChecker) FromKprobeArgument(event *tetragon.KprobeA
 			checker.CapabilityArg = NewKprobeCapabilityChecker().FromKprobeCapability(event.CapabilityArg)
 		}
 	}
+	return checker
+}
+
+// ProcessBinaryChecker implements a checker struct to check a ProcessBinary field
+type ProcessBinaryChecker struct {
+	Path    *stringmatcher.StringMatcher `json:"path,omitempty"`
+	Buildid *bytesmatcher.BytesMatcher   `json:"buildid,omitempty"`
+}
+
+// NewProcessBinaryChecker creates a new ProcessBinaryChecker
+func NewProcessBinaryChecker() *ProcessBinaryChecker {
+	return &ProcessBinaryChecker{}
+}
+
+// Check checks a ProcessBinary field
+func (checker *ProcessBinaryChecker) Check(event *tetragon.ProcessBinary) error {
+	if event == nil {
+		return fmt.Errorf("ProcessBinaryChecker: ProcessBinary field is nil")
+	}
+
+	if checker.Path != nil {
+		if err := checker.Path.Match(event.Path); err != nil {
+			return fmt.Errorf("ProcessBinaryChecker: Path check failed: %w", err)
+		}
+	}
+	if checker.Buildid != nil {
+		if err := checker.Buildid.Match(event.Buildid); err != nil {
+			return fmt.Errorf("ProcessBinaryChecker: Buildid check failed: %w", err)
+		}
+	}
+	return nil
+}
+
+// WithPath adds a Path check to the ProcessBinaryChecker
+func (checker *ProcessBinaryChecker) WithPath(check *stringmatcher.StringMatcher) *ProcessBinaryChecker {
+	checker.Path = check
+	return checker
+}
+
+// WithBuildid adds a Buildid check to the ProcessBinaryChecker
+func (checker *ProcessBinaryChecker) WithBuildid(check *bytesmatcher.BytesMatcher) *ProcessBinaryChecker {
+	checker.Buildid = check
+	return checker
+}
+
+//FromProcessBinary populates the ProcessBinaryChecker using data from a ProcessBinary field
+func (checker *ProcessBinaryChecker) FromProcessBinary(event *tetragon.ProcessBinary) *ProcessBinaryChecker {
+	if event == nil {
+		return checker
+	}
+	checker.Path = stringmatcher.Full(event.Path)
+	checker.Buildid = bytesmatcher.Full(event.Buildid)
 	return checker
 }
 
