@@ -12,6 +12,7 @@ import (
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/asm"
 	"github.com/cilium/ebpf/link"
+	"github.com/cilium/tetragon/pkg/kernels"
 	"golang.org/x/sys/unix"
 )
 
@@ -110,4 +111,8 @@ func HasBuildId() bool {
 	buildid.detected = detectBuildId()
 	buildid.initialized = true
 	return buildid.detected
+}
+
+func HasLoaderEvents() bool {
+	return HasBuildId() && kernels.MinKernelVersion("5.19.0")
 }

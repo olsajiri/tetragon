@@ -23,6 +23,7 @@ import (
 	"github.com/cilium/tetragon/pkg/reader/notify"
 	"github.com/cilium/tetragon/pkg/sensors"
 	"github.com/cilium/tetragon/pkg/sensors/config/confmap"
+	"golang.org/x/sys/unix"
 
 	"github.com/sirupsen/logrus"
 )
@@ -190,6 +191,31 @@ func (k *Observer) runEvents(stopCtx context.Context, ready func()) error {
 
 	if err != nil {
 		return fmt.Errorf("creating perf array reader failed: %w", err)
+	}
+
+	var loaderFds []int
+
+	if bpf.HasLoaderEvents() {
+		attr := &unix.PerfEventAttr{
+			Type:        unix.PERF_TYPE_SOFTWARE,
+			Config:      unix.PERF_COUNT_SW_BPF_OUTPUT,
+			Sample_type: unix.PERF_SAMPLE_RAW,
+			Bits:        unix.PerfBitMmap | unix.PerfBitMmap2 | bpf.PerfBitBuildId,
+		}
+
+		defer func() {
+			for _, fd := range loaderFds {
+				unix.Close(fd)
+			}
+		}()
+		for cpu := 0; cpu < int(perfMap.MaxEntries()); cpu++ {
+			fd, err := unix.PerfEventOpen(attr, -1, cpu, -1, unix.PERF_FLAG_FD_CLOEXEC)
+			if err != nil {
+				return fmt.Errorf("can't create perf event: %w", err)
+			}
+			loaderFds = append(loaderFds, fd)
+		}
+		k.log.Info("Monitoring loader events")
 	}
 
 	// Inform caller that we're about to start processing events.
