@@ -43,6 +43,9 @@ type TracingPolicySpec struct {
 	// +kubebuilder:validation:Optional
 	// A list of tracepoint specs.
 	Tracepoints []TracepointSpec `json:"tracepoints"`
+	// +kubebuilder:validation:Optional
+	// Enable loader events
+	Loader bool `json:"loader"`
 }
 
 type KProbeSpec struct {
