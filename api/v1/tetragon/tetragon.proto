@@ -278,13 +278,9 @@ message GetHealthStatusResponse {
 	repeated HealthStatus health_status = 1;
 }
 
-message ProcessBinary {
-	string path = 1;
-	bytes buildid = 2;
-}
-
 message ProcessLoader {
 	Process process = 1;
 	Process parent = 2;
-	ProcessBinary binary = 3;
+	string path = 3;
+	bytes buildid = 4;
 }
