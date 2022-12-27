@@ -86,7 +86,7 @@ generic_process_event_and_setup(struct pt_regs *ctx,
 				struct bpf_map_def *config_map)
 {
 	struct msg_generic_kprobe *e;
-	struct event_config *config;
+	struct event_config *config __maybe_unused;
 	int zero = 0;
 
 	/* Pid/Ktime Passed through per cpu map in process heap. */
@@ -94,6 +94,7 @@ generic_process_event_and_setup(struct pt_regs *ctx,
 	if (!e)
 		return 0;
 
+#ifdef GENERIC_KPROBE
 	config = map_lookup_elem(config_map, &e->idx);
 	if (!config)
 		return 0;
@@ -116,6 +117,17 @@ generic_process_event_and_setup(struct pt_regs *ctx,
 		e->a4 = PT_REGS_PARM5_CORE(ctx);
 	}
 	e->common.op = MSG_OP_GENERIC_KPROBE;
+#endif
+
+#ifdef GENERIC_UPROBE
+	/* no arguments for uprobes for now */
+	e->a0 = 0;
+	e->a1 = 0;
+	e->a2 = 0;
+	e->a3 = 0;
+	e->a4 = 0;
+	e->common.op = MSG_OP_GENERIC_UPROBE;
+#endif
 	e->common.flags = 0;
 	return generic_process_event0(ctx, heap_map, tailcals, config_map);
 }
