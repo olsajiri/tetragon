@@ -84,6 +84,10 @@ type Program struct {
 
 	MultiSymbols []string
 	MultiCookies []uint64
+
+	// uprobe setup
+	Path   string
+	Symbol string
 }
 
 func (p *Program) SetRetProbe(ret bool) *Program {
@@ -93,6 +97,12 @@ func (p *Program) SetRetProbe(ret bool) *Program {
 
 func (p *Program) SetLoaderData(d interface{}) *Program {
 	p.LoaderData = d
+	return p
+}
+
+func (p *Program) SetUprobe(path, symbol string) *Program {
+	p.Path = path
+	p.Symbol = symbol
 	return p
 }
 
