@@ -192,15 +192,6 @@ func getMetaValue(arg *v1alpha1.KProbeArg) (int, error) {
 
 var binaryNames []v1alpha1.BinarySelector
 
-func initBinaryNames(spec *v1alpha1.KProbeSpec) error {
-	for _, s := range spec.Selectors {
-		for _, b := range s.MatchBinaries {
-			binaryNames = append(binaryNames, b)
-		}
-	}
-	return nil
-}
-
 func createMultiKprobeSensor(sensorPath string, multiIDs, multiRetIDs []idtable.EntryID) ([]*program.Program, []*program.Map) {
 	var progs []*program.Program
 	var maps []*program.Map
@@ -403,9 +394,7 @@ func createGenericKprobeSensor(name string, kprobes []v1alpha1.KProbeSpec) (*sen
 		}
 
 		// Parse Binary Name into kernel data structures
-		if err := initBinaryNames(f); err != nil {
-			return nil, err
-		}
+		binaryNames = initBinaryNames(f.Selectors)
 
 		hasOverride := selectors.HasOverride(f)
 		if hasOverride && !bpf.HasOverrideHelper() {

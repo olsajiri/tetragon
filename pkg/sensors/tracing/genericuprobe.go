@@ -8,12 +8,14 @@ import (
 	"encoding/binary"
 	"fmt"
 	"path"
+	"path/filepath"
 	"reflect"
 	"sync/atomic"
 
 	"github.com/cilium/ebpf"
 	"github.com/cilium/tetragon/pkg/api/ops"
 	api "github.com/cilium/tetragon/pkg/api/tracingapi"
+	"github.com/cilium/tetragon/pkg/bpf"
 	"github.com/cilium/tetragon/pkg/grpc/tracing"
 	"github.com/cilium/tetragon/pkg/idtable"
 	"github.com/cilium/tetragon/pkg/k8s/apis/cilium.io/v1alpha1"
@@ -21,7 +23,9 @@ import (
 	"github.com/cilium/tetragon/pkg/logger"
 	"github.com/cilium/tetragon/pkg/observer"
 	"github.com/cilium/tetragon/pkg/option"
+	"github.com/cilium/tetragon/pkg/selectors"
 	"github.com/cilium/tetragon/pkg/sensors"
+	"github.com/cilium/tetragon/pkg/sensors/base"
 	"github.com/cilium/tetragon/pkg/sensors/program"
 )
 
@@ -39,6 +43,8 @@ type genericUprobe struct {
 	config        *api.EventConfig
 	path          string
 	symbol        string
+	selectors     *selectors.KernelSelectorState
+	binaryNames   []v1alpha1.BinarySelector
 }
 
 func (g *genericUprobe) SetID(id idtable.EntryID) {
@@ -113,13 +119,61 @@ func (k *observerUprobeSensor) LoadProbe(args sensors.LoadProbeArgs) error {
 
 	load.MapLoad = append(load.MapLoad, config)
 
+	selBuff := uprobeEntry.selectors.Buffer()
+	filter := &program.MapLoad{
+		Index: 0,
+		Name:  "filter_map",
+		Load: func(m *ebpf.Map, index uint32) error {
+			return m.Update(index, selBuff[:], ebpf.UpdateAny)
+		},
+	}
+
+	load.MapLoad = append(load.MapLoad, filter)
+
 	sensors.AllPrograms = append(sensors.AllPrograms, load)
 
 	if err := program.LoadUprobeProgram(args.BPFDir, args.MapDir, args.Load, args.Verbose); err != nil {
 		return err
 	}
+
+	m, err := bpf.OpenMap(filepath.Join(args.MapDir, base.NamesMap.Name))
+	if err != nil {
+		return err
+	}
+	for i, b := range uprobeEntry.binaryNames {
+		for _, path := range b.Values {
+			writeBinaryMap(i+1, path, m)
+		}
+	}
+
 	logger.GetLogger().Infof("Loaded generic uprobe program: %s -> %s [%s]", args.Load.Name, args.Load.Path, args.Load.Symbol)
 	return nil
+}
+
+func isValidUprobeSelectors(selectors []v1alpha1.KProbeSelector) error {
+	for _, s := range selectors {
+		if len(s.MatchArgs) > 0 ||
+			len(s.MatchActions) > 0 ||
+			len(s.MatchReturnArgs) > 0 ||
+			len(s.MatchNamespaces) > 0 ||
+			len(s.MatchNamespaceChanges) > 0 ||
+			len(s.MatchCapabilities) > 0 ||
+			len(s.MatchCapabilityChanges) > 0 {
+			return fmt.Errorf("Only matchPIDs selector is supported")
+		}
+	}
+	return nil
+}
+
+func initBinaryNames(selectors []v1alpha1.KProbeSelector) []v1alpha1.BinarySelector {
+	var binaryNames []v1alpha1.BinarySelector
+
+	for _, s := range selectors {
+		for _, b := range s.MatchBinaries {
+			binaryNames = append(binaryNames, b)
+		}
+	}
+	return binaryNames
 }
 
 func createGenericUprobeSensor(name string, uprobes []v1alpha1.UProbeSpec) (*sensors.Sensor, error) {
@@ -139,11 +193,25 @@ func createGenericUprobeSensor(name string, uprobes []v1alpha1.UProbeSpec) (*sen
 		spec := &uprobes[i]
 		config := &api.EventConfig{}
 
+		var args []v1alpha1.KProbeArg
+
+		if err := isValidUprobeSelectors(spec.Selectors); err != nil {
+			return nil, err
+		}
+
+		// Parse Filters into kernel filter logic
+		uprobeSelectorState, err := selectors.InitKernelSelectorState(spec.Selectors, args)
+		if err != nil {
+			return nil, err
+		}
+
 		uprobeEntry := genericUprobe{
-			tableId: idtable.UninitializedEntryID,
-			config:  config,
-			path:    spec.Path,
-			symbol:  spec.Symbol,
+			tableId:     idtable.UninitializedEntryID,
+			config:      config,
+			path:        spec.Path,
+			symbol:      spec.Symbol,
+			selectors:   uprobeSelectorState,
+			binaryNames: initBinaryNames(spec.Selectors),
 		}
 
 		uprobeTable.AddEntry(&uprobeEntry)
@@ -168,7 +236,8 @@ func createGenericUprobeSensor(name string, uprobes []v1alpha1.UProbeSpec) (*sen
 
 		configMap := program.MapBuilderPin("config_map", sensors.PathJoin(pinPath, "config_map"), load)
 		tailCalls := program.MapBuilderPin("uprobe_calls", sensors.PathJoin(pinPath, "up_calls"), load)
-		maps = append(maps, configMap, tailCalls)
+		filterMap := program.MapBuilderPin("filter_map", sensors.PathJoin(pinPath, "filter_map"), load)
+		maps = append(maps, configMap, tailCalls, filterMap)
 	}
 
 	return &sensors.Sensor{
