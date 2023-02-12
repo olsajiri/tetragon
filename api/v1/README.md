@@ -35,6 +35,7 @@
     - [ProcessKprobe](#tetragon-ProcessKprobe)
     - [ProcessLoader](#tetragon-ProcessLoader)
     - [ProcessTracepoint](#tetragon-ProcessTracepoint)
+    - [ProcessUprobe](#tetragon-ProcessUprobe)
     - [Test](#tetragon-Test)
   
     - [HealthStatusResult](#tetragon-HealthStatusResult)
@@ -691,6 +692,24 @@ loader sensor event triggered for loaded binary/library
 
 
 
+<a name="tetragon-ProcessUprobe"></a>
+
+### ProcessUprobe
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| process | [Process](#tetragon-Process) |  |  |
+| parent | [Process](#tetragon-Process) |  |  |
+| path | [string](#string) |  |  |
+| symbol | [string](#string) |  |  |
+
+
+
+
+
+
 <a name="tetragon-Test"></a>
 
 ### Test
@@ -877,6 +896,7 @@ Note that currently only process_accept and process_connect events are aggregate
 | process_kprobe | [ProcessKprobe](#tetragon-ProcessKprobe) |  |  |
 | process_tracepoint | [ProcessTracepoint](#tetragon-ProcessTracepoint) |  |  |
 | process_loader | [ProcessLoader](#tetragon-ProcessLoader) |  |  |
+| process_uprobe | [ProcessUprobe](#tetragon-ProcessUprobe) |  |  |
 | test | [Test](#tetragon-Test) |  |  |
 | node_name | [string](#string) |  | Name of the node where this event was observed. |
 | time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | Timestamp at which this event was observed.
@@ -907,6 +927,7 @@ GetEventsResponse event oneof.
 | PROCESS_KPROBE | 9 |  |
 | PROCESS_TRACEPOINT | 10 |  |
 | PROCESS_LOADER | 11 |  |
+| PROCESS_UPROBE | 12 |  |
 | TEST | 40000 |  |
 
 
