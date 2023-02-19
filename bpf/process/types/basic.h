@@ -50,6 +50,7 @@ enum {
 	capability_type = 23,
 
 	kiocb_type = 24,
+	iov_iter_type = 25,
 
 	nop_s64_ty = -10,
 	nop_u64_ty = -11,
@@ -1419,6 +1420,46 @@ read_call_arg(void *ctx, struct msg_generic_kprobe *e, int index, int type,
 	e->argsoff[index] = orig_off;
 
 	switch (type) {
+	case iov_iter_type: {
+		struct iov_iter *iov_iter = (struct iov_iter *)arg;
+		struct kvec *kvec;
+		const char *buf;
+		size_t count;
+		u8 iter_type;
+		void *tmp;
+
+		tmp = _(&iov_iter->iter_type);
+		probe_read(&iter_type, sizeof(iter_type), tmp);
+
+		if (iter_type != ITER_UBUF && iter_type != ITER_IOVEC)
+			return 0;
+
+		switch (iter_type) {
+		case ITER_IOVEC:
+			tmp = _(&iov_iter->kvec);
+			probe_read(&kvec, sizeof(kvec), tmp);
+
+			tmp = _(&kvec->iov_base);
+			probe_read(&buf, sizeof(buf), tmp);
+
+			tmp = _(&kvec->iov_len);
+			probe_read(&count, sizeof(count), tmp);
+
+			size = __copy_char_buf(orig_off, (unsigned long)buf, count & 0x03ff, e);
+			break;
+		case ITER_UBUF:
+			tmp = _(&iov_iter->ubuf);
+			probe_read(&buf, sizeof(buf), tmp);
+
+			tmp = _(&iov_iter->count);
+			probe_read(&count, sizeof(count), tmp);
+
+			size = __copy_char_buf(orig_off, (unsigned long)buf, count & 0x03ff, e);
+		default:
+			break;
+		}
+		break;
+	}
 	case kiocb_type: {
 		struct kiocb *kiocb = (struct kiocb *)arg;
 		struct file *file;
