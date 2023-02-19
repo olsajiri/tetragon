@@ -86,6 +86,7 @@ spec:
                             - user_namespace
                             - capability
                             - kiocb
+                            - iov_iter
                             type: string
                         required:
                         - index
@@ -145,6 +146,7 @@ spec:
                           - user_namespace
                           - capability
                           - kiocb
+                          - iov_iter
                           type: string
                       required:
                       - index
@@ -499,6 +501,7 @@ spec:
                             - user_namespace
                             - capability
                             - kiocb
+                            - iov_iter
                             type: string
                         required:
                         - index

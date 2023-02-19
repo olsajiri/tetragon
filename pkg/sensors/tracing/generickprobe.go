@@ -895,7 +895,7 @@ func handleGenericKprobe(r *bytes.Reader) ([]observer.Event, error) {
 			arg.Effective = cred.Effective
 			arg.Inheritable = cred.Inheritable
 			unix.Args = append(unix.Args, arg)
-		case gt.GenericCharBuffer, gt.GenericCharIovec:
+		case gt.GenericCharBuffer, gt.GenericCharIovec, gt.GenericIovIter:
 			if arg, err := ReadArgBytes(r, a.index); err == nil {
 				unix.Args = append(unix.Args, *arg)
 			} else {
