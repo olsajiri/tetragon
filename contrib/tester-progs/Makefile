@@ -12,7 +12,8 @@ PROGS = sigkill-tester \
 	exit-leader \
 	exit-tester \
 	uprobe-test-1 \
-	uprobe-test-2
+	uprobe-test-2 \
+	upm
 
 all: $(PROGS)
 
@@ -39,6 +40,9 @@ uprobe-test-1: uprobe-test.c libuprobe.so
 
 uprobe-test-2: uprobe-test-1
 	cp uprobe-test-1 uprobe-test-2
+
+upm: upm.c
+	$(GCC) -o $@ $<
 
 .PHONY: clean
 clean:

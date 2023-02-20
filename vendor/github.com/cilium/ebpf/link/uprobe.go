@@ -36,7 +36,7 @@ type Executable struct {
 	// Path of the executable on the filesystem.
 	path string
 	// Parsed ELF and dynamic symbols' addresses.
-	addresses map[string]uint64
+	Addresses map[string]uint64
 }
 
 // UprobeOptions defines additional parameters that will be used
@@ -100,7 +100,7 @@ func OpenExecutable(path string) (*Executable, error) {
 
 	ex := Executable{
 		path:      path,
-		addresses: make(map[string]uint64),
+		Addresses: make(map[string]uint64),
 	}
 
 	if err := ex.load(se); err != nil {
@@ -150,7 +150,7 @@ func (ex *Executable) load(f *internal.SafeELFFile) error {
 			}
 		}
 
-		ex.addresses[s.Name] = address
+		ex.Addresses[s.Name] = address
 	}
 
 	return nil
@@ -164,7 +164,7 @@ func (ex *Executable) address(symbol string, opts *UprobeOptions) (uint64, error
 		return opts.Address + opts.Offset, nil
 	}
 
-	address, ok := ex.addresses[symbol]
+	address, ok := ex.Addresses[symbol]
 	if !ok {
 		return 0, fmt.Errorf("symbol %s: %w", symbol, ErrNoSymbol)
 	}

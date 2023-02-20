@@ -90,7 +90,7 @@ tetragon-bpf-container:
 verify: tetragon-bpf
 	sudo contrib/verify/verify.sh bpf/objs
 
-.PHONY: tetragon tetra tetragon-operator tetragon-alignchecker tetragon-bench
+.PHONY: tetragon tetra tetragon-operator tetragon-alignchecker tetragon-bench upm
 tetragon:
 	$(GO) build -gcflags=$(GO_GCFLAGS) -ldflags=$(GO_LDFLAGS) -mod=vendor ./cmd/tetragon/
 
@@ -105,6 +105,9 @@ tetragon-operator:
 
 tetragon-alignchecker:
 	$(GO) build -gcflags=$(GO_GCFLAGS) -ldflags=$(GO_LDFLAGS) -mod=vendor -o $@ ./tools/alignchecker/
+
+upm:
+	$(GO) build -gcflags=$(GO_GCFLAGS) -ldflags=$(GO_LDFLAGS) -mod=vendor ./cmd/upm/
 
 .PHONY: ksyms
 ksyms:
