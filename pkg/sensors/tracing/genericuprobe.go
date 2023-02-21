@@ -5,6 +5,7 @@ package tracing
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"fmt"
 	"path"
@@ -23,6 +24,7 @@ import (
 	"github.com/cilium/tetragon/pkg/logger"
 	"github.com/cilium/tetragon/pkg/observer"
 	"github.com/cilium/tetragon/pkg/option"
+	"github.com/cilium/tetragon/pkg/rthooks"
 	"github.com/cilium/tetragon/pkg/selectors"
 	"github.com/cilium/tetragon/pkg/sensors"
 	"github.com/cilium/tetragon/pkg/sensors/base"
@@ -51,6 +53,11 @@ func (g *genericUprobe) SetID(id idtable.EntryID) {
 	g.tableId = id
 }
 
+func createContainer(ctx context.Context, arg *rthooks.CreateContainerArg) error {
+	fmt.Printf("KRAVA '%v' '%v'\n", arg.Req.CgroupsPath, arg.Req.RootDir)
+	return nil
+}
+
 func init() {
 	uprobe := &observerUprobeSensor{
 		name: "uprobe sensor",
@@ -58,6 +65,7 @@ func init() {
 	sensors.RegisterProbeType("generic_uprobe", uprobe)
 	sensors.RegisterSpecHandlerAtInit(uprobe.name, uprobe)
 	observer.RegisterEventHandlerAtInit(ops.MSG_OP_GENERIC_UPROBE, handleGenericUprobe)
+	rthooks.RegisterCallbacksAtInit(rthooks.Callbacks{CreateContainer: createContainer})
 }
 
 func genericUprobeTableGet(id idtable.EntryID) (*genericUprobe, error) {
