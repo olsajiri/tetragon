@@ -8,6 +8,7 @@
 #include "bpf_events.h"
 #include "bpf_process_event.h"
 #include "bpf_helpers.h"
+#include "bpf_tracing.h"
 
 char _license[] __attribute__((section("license"), used)) = "GPL";
 
@@ -134,6 +135,11 @@ event_filename_builder(void *ctx, struct msg_process *curr, __u32 curr_pid,
 	heap = map_lookup_elem(&execve_heap, &zero);
 	if (!heap)
 		return bin;
+
+	// the names_map key is full char[256] buffer, not just the null-terminated
+	// string, so we need to zero out the full heap buffer, because it might
+	// contain other stuff
+	__builtin_memset(&heap->pathname, 0x0, sizeof(heap->pathname));
 
 	probe_read_str(heap->pathname, 255, filename);
 	value = map_lookup_elem(&names_map, heap->pathname);
