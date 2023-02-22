@@ -134,7 +134,7 @@ event_filename_builder(void *ctx, struct msg_process *curr, __u32 curr_pid,
 
 	heap = map_lookup_elem(&execve_heap, &zero);
 	if (!heap)
-		return bin;
+		return 0;
 
 	// the names_map key is full char[256] buffer, not just the null-terminated
 	// string, so we need to zero out the full heap buffer, because it might
@@ -145,7 +145,7 @@ event_filename_builder(void *ctx, struct msg_process *curr, __u32 curr_pid,
 	value = map_lookup_elem(&names_map, heap->pathname);
 	if (value)
 		return *value;
-	return bin;
+	return 0;
 }
 
 __attribute__((section("tracepoint/sys_execve"), used)) int
