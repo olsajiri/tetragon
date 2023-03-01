@@ -8,6 +8,7 @@ spec:
     syscall: false
     args:
     - index: 0
-      type:  "kiocb"
+      type: "kiocb"
     - index: 1
-      type:  "iov_iter"
+      type: "iov_iter"
+      max: true

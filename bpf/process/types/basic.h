@@ -1468,7 +1468,7 @@ read_call_arg(void *ctx, struct msg_generic_kprobe *e, int index, int type,
 			tmp = _(&kvec->iov_len);
 			probe_read(&count, sizeof(count), tmp);
 
-			size = __copy_char_buf(ctx, orig_off, (unsigned long)buf, count & 0x03ff, has_max(argm), e, data_heap);
+			size = __copy_char_buf(ctx, orig_off, (unsigned long)buf, count, has_max(argm), e, data_heap);
 			break;
 		case ITER_UBUF:
 			tmp = _(&iov_iter->ubuf);
@@ -1477,7 +1477,7 @@ read_call_arg(void *ctx, struct msg_generic_kprobe *e, int index, int type,
 			tmp = _(&iov_iter->count);
 			probe_read(&count, sizeof(count), tmp);
 
-			size = __copy_char_buf(ctx, orig_off, (unsigned long)buf, count & 0x03ff, has_max(argm), e, data_heap);
+			size = __copy_char_buf(ctx, orig_off, (unsigned long)buf, count, has_max(argm), e, data_heap);
 		default:
 			break;
 		}
