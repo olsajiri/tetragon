@@ -15,6 +15,7 @@
 #include "user_namespace.h"
 #include "capabilities.h"
 #include "../argfilter_maps.h"
+#include "process/data_event.h"
 
 /* Type IDs form API with user space generickprobe.go */
 enum {
@@ -478,11 +479,18 @@ copy_capability(char *args, unsigned long arg)
 
 #define ARGM_INDEX_MASK	 ((1 << 4) - 1)
 #define ARGM_RETURN_COPY (1 << 4)
+#define ARGM_MAX	 (1 << 5)
 
 static inline __attribute__((always_inline)) bool
 hasReturnCopy(unsigned long argm)
 {
 	return (argm & ARGM_RETURN_COPY) != 0;
+}
+
+static inline __attribute__((always_inline)) bool
+has_max(unsigned long argm)
+{
+	return (argm & ARGM_MAX) != 0;
 }
 
 static inline __attribute__((always_inline)) unsigned long
@@ -504,12 +512,25 @@ get_arg_meta(int meta, struct msg_generic_kprobe *e)
 }
 
 static inline __attribute__((always_inline)) long
-__copy_char_buf(long off, unsigned long arg, unsigned long bytes,
-		struct msg_generic_kprobe *e)
+__copy_char_buf(void *ctx, long off, unsigned long arg, unsigned long bytes,
+		bool data_event, struct msg_generic_kprobe *e,
+		struct bpf_map_def *data_heap)
 {
 	int *s = (int *)args_off(e, off);
-	size_t rd_bytes;
+	size_t rd_bytes, extra = 8;
 	int err;
+
+	if (data_event) {
+		if (bytes >= 0x1000) {
+			s[0] = 1;
+			return data_event_bytes(ctx,
+					(struct data_event_desc *) &s[1],
+					arg, bytes, data_heap) + 4;
+		}
+		s[0] = 0;
+		s = (int *)args_off(e, off + 4);
+		extra = 4;
+	}
 
 	/* Bound bytes <4095 to ensure bytes does not read past end of buffer */
 	rd_bytes = bytes < 0x1000 ? bytes : 0xfff;
@@ -520,12 +541,13 @@ __copy_char_buf(long off, unsigned long arg, unsigned long bytes,
 		return return_error(s, char_buf_pagefault);
 	s[0] = (int)bytes;
 	s[1] = (int)rd_bytes;
-	return rd_bytes + 8;
+	return rd_bytes + extra;
 }
 
 static inline __attribute__((always_inline)) long
 copy_char_buf(void *ctx, long off, unsigned long arg, int argm,
-	      struct msg_generic_kprobe *e)
+	      struct msg_generic_kprobe *e,
+	      struct bpf_map_def *data_heap)
 {
 	int *s = (int *)args_off(e, off);
 	unsigned long meta;
@@ -538,7 +560,7 @@ copy_char_buf(void *ctx, long off, unsigned long arg, int argm,
 	}
 	meta = get_arg_meta(argm, e);
 	probe_read(&bytes, sizeof(bytes), &meta);
-	return __copy_char_buf(off, arg, bytes, e);
+	return __copy_char_buf(ctx, off, arg, bytes, has_max(argm), e, data_heap);
 }
 
 static inline __attribute__((always_inline)) long
@@ -1404,7 +1426,8 @@ filter_read_arg(void *ctx, int index, struct bpf_map_def *heap,
  */
 static inline __attribute__((always_inline)) long
 read_call_arg(void *ctx, struct msg_generic_kprobe *e, int index, int type,
-	      long orig_off, unsigned long arg, int argm)
+	      long orig_off, unsigned long arg, int argm,
+	      struct bpf_map_def *data_heap)
 {
 	size_t min_size = type_to_min_size(type, argm);
 	char *args = e->args;
@@ -1445,7 +1468,7 @@ read_call_arg(void *ctx, struct msg_generic_kprobe *e, int index, int type,
 			tmp = _(&kvec->iov_len);
 			probe_read(&count, sizeof(count), tmp);
 
-			size = __copy_char_buf(orig_off, (unsigned long)buf, count & 0x03ff, e);
+			size = __copy_char_buf(ctx, orig_off, (unsigned long)buf, count & 0x03ff, has_max(argm), e, data_heap);
 			break;
 		case ITER_UBUF:
 			tmp = _(&iov_iter->ubuf);
@@ -1454,7 +1477,7 @@ read_call_arg(void *ctx, struct msg_generic_kprobe *e, int index, int type,
 			tmp = _(&iov_iter->count);
 			probe_read(&count, sizeof(count), tmp);
 
-			size = __copy_char_buf(orig_off, (unsigned long)buf, count & 0x03ff, e);
+			size = __copy_char_buf(ctx, orig_off, (unsigned long)buf, count & 0x03ff, has_max(argm), e, data_heap);
 		default:
 			break;
 		}
@@ -1542,7 +1565,7 @@ read_call_arg(void *ctx, struct msg_generic_kprobe *e, int index, int type,
 		size = copy_cred(args, arg);
 		break;
 	case char_buf:
-		size = copy_char_buf(ctx, orig_off, arg, argm, e);
+		size = copy_char_buf(ctx, orig_off, arg, argm, e, data_heap);
 		break;
 	case char_iovec:
 		size = copy_char_iovec(ctx, orig_off, arg, argm, e);

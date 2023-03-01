@@ -37,6 +37,13 @@ struct {
 	__type(value, __s32);
 } override_tasks SEC(".maps");
 
+struct {
+	__uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
+	__uint(max_entries, 1);
+	__type(key, __u32);
+	__type(value, struct msg_data);
+} data_heap SEC(".maps");
+
 struct filter_map_value {
 	unsigned char buf[FILTER_SIZE];
 };
@@ -137,7 +144,8 @@ generic_kprobe_process_event0(void *ctx)
 	return generic_process_event_and_setup(
 		ctx, (struct bpf_map_def *)&process_call_heap,
 		(struct bpf_map_def *)&kprobe_calls,
-		(struct bpf_map_def *)&config_map);
+		(struct bpf_map_def *)&config_map,
+		(struct bpf_map_def *)&data_heap);
 }
 
 __attribute__((section("kprobe/1"), used)) int
@@ -146,7 +154,8 @@ generic_kprobe_process_event1(void *ctx)
 	return generic_process_event(ctx, 1,
 				     (struct bpf_map_def *)&process_call_heap,
 				     (struct bpf_map_def *)&kprobe_calls,
-				     (struct bpf_map_def *)&config_map);
+				     (struct bpf_map_def *)&config_map,
+				     (struct bpf_map_def *)&data_heap);
 }
 
 __attribute__((section("kprobe/2"), used)) int
@@ -155,7 +164,8 @@ generic_kprobe_process_event2(void *ctx)
 	return generic_process_event(ctx, 2,
 				     (struct bpf_map_def *)&process_call_heap,
 				     (struct bpf_map_def *)&kprobe_calls,
-				     (struct bpf_map_def *)&config_map);
+				     (struct bpf_map_def *)&config_map,
+				     (struct bpf_map_def *)&data_heap);
 }
 
 __attribute__((section("kprobe/3"), used)) int
@@ -164,7 +174,8 @@ generic_kprobe_process_event3(void *ctx)
 	return generic_process_event(ctx, 3,
 				     (struct bpf_map_def *)&process_call_heap,
 				     (struct bpf_map_def *)&kprobe_calls,
-				     (struct bpf_map_def *)&config_map);
+				     (struct bpf_map_def *)&config_map,
+				     (struct bpf_map_def *)&data_heap);
 }
 
 __attribute__((section("kprobe/4"), used)) int
@@ -173,7 +184,8 @@ generic_kprobe_process_event4(void *ctx)
 	return generic_process_event(ctx, 4,
 				     (struct bpf_map_def *)&process_call_heap,
 				     (struct bpf_map_def *)&kprobe_calls,
-				     (struct bpf_map_def *)&config_map);
+				     (struct bpf_map_def *)&config_map,
+				     (struct bpf_map_def *)&data_heap);
 }
 
 __attribute__((section("kprobe/5"), used)) int

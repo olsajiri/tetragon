@@ -18,6 +18,7 @@ import (
 	"sync/atomic"
 
 	"github.com/cilium/ebpf"
+	"github.com/cilium/tetragon/pkg/api/dataapi"
 	"github.com/cilium/tetragon/pkg/api/ops"
 	api "github.com/cilium/tetragon/pkg/api/tracingapi"
 	"github.com/cilium/tetragon/pkg/bpf"
@@ -85,6 +86,7 @@ type kprobeLoadArgs struct {
 type argPrinters struct {
 	ty    int
 	index int
+	max   bool
 }
 
 type pendingEventKey struct {
@@ -160,6 +162,7 @@ var (
 
 const (
 	argReturnCopyBit = 1 << 4
+	argMaxBit        = 1 << 5
 )
 
 func argReturnCopy(meta int) bool {
@@ -182,6 +185,9 @@ func getMetaValue(arg *v1alpha1.KProbeArg) (int, error) {
 	}
 	if arg.ReturnCopy {
 		meta = meta | argReturnCopyBit
+	}
+	if arg.Max {
+		meta = meta | argMaxBit
 	}
 	return meta, nil
 }
@@ -331,7 +337,7 @@ func createGenericKprobeSensor(name string, kprobes []v1alpha1.KProbeSpec) (*sen
 			config.ArgM[a.Index] = uint32(argMValue)
 
 			argsBTFSet[a.Index] = true
-			argP := argPrinters{index: j, ty: argType}
+			argP := argPrinters{index: j, ty: argType, max: a.Max}
 			argSigPrinters = append(argSigPrinters, argP)
 		}
 
@@ -707,15 +713,36 @@ func handleGenericKprobeString(r *bytes.Reader) string {
 	return strVal
 }
 
-func ReadArgBytes(r *bytes.Reader, index int) (*api.MsgGenericKprobeArgBytes, error) {
-	var bytes, bytes_rd int32
+func ReadArgBytes(r *bytes.Reader, index int, hasMax bool) (*api.MsgGenericKprobeArgBytes, error) {
+	var bytes, bytes_rd, max int32
 	var arg api.MsgGenericKprobeArgBytes
+
+	arg.Index = uint64(index)
+
+	if hasMax {
+		if err := binary.Read(r, binary.LittleEndian, &max); err != nil {
+			return nil, fmt.Errorf("failed to read original size for buffer argument: %w", err)
+		}
+		if max != 0 {
+			var desc dataapi.DataEventDesc
+
+			if err := binary.Read(r, binary.LittleEndian, &desc); err != nil {
+				return nil, err
+			}
+			data, err := observer.DataGet(desc.Id)
+			if err != nil {
+				return nil, err
+			}
+			arg.OrigSize = uint64(bytes)
+			arg.Value = data
+			return &arg, nil
+		}
+	}
 
 	if err := binary.Read(r, binary.LittleEndian, &bytes); err != nil {
 		return nil, fmt.Errorf("failed to read original size for buffer argument: %w", err)
 	}
 
-	arg.Index = uint64(index)
 	if bytes == CharBufSavedForRetprobe {
 		return &arg, nil
 	}
@@ -905,7 +932,7 @@ func handleGenericKprobe(r *bytes.Reader) ([]observer.Event, error) {
 			arg.Inheritable = cred.Inheritable
 			unix.Args = append(unix.Args, arg)
 		case gt.GenericCharBuffer, gt.GenericCharIovec, gt.GenericIovIter:
-			if arg, err := ReadArgBytes(r, a.index); err == nil {
+			if arg, err := ReadArgBytes(r, a.index, a.max); err == nil {
 				unix.Args = append(unix.Args, *arg)
 			} else {
 				logger.GetLogger().WithError(err).Warnf("failed to read bytes argument")
