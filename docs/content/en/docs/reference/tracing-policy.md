@@ -289,6 +289,26 @@ args:
 ```
 This tells the printer to skip printing the `int` arg because it's not useful.
 
+For `char_buf` type up to the 4096 bytes are stored. Data with bigger size
+are cut and returned as truncated bytes.
+
+You can specify `max` flag for `char_buf` type to return the maximum data
+size, like:
+
+```yaml
+args:
+- index: 1
+  type: "char_buf"
+  max: true
+  sizeArgIndex: 3
+- index: 2
+  type: "size_t"
+```
+
+The `max` flag does not work with `returnCopy` flag at the moment, so it's
+usable only for syscalls/functions that do not require return probe to
+read the data.
+
 ### Selectors
 
 A `TracingPolicy` can contain from 0 to 5 selectors. A selector is composed of
