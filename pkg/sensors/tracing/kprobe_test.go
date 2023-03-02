@@ -2511,8 +2511,8 @@ func TestLoadKprobeSensor(t *testing.T) {
 		// generic_kprobe_filter_arg*
 		tus.SensorMap{Name: "override_tasks", Progs: []uint{6, 7, 8, 9, 10}},
 
-		// generic_kprobe_filter_arg*,generic_retkprobe_event,base
-		tus.SensorMap{Name: "tcpmon_map", Progs: []uint{6, 7, 8, 9, 10, 12}},
+		// generic_kprobe_filter_arg*,generic_retkprobe_event,base,generic_kprobe_process_event*
+		tus.SensorMap{Name: "tcpmon_map", Progs: []uint{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12}},
 
 		// only retkprobe
 		tus.SensorMap{Name: "config_map", Progs: []uint{12}},
