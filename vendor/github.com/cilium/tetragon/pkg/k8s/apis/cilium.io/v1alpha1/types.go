@@ -100,6 +100,10 @@ type KProbeArg struct {
 	// +kubebuilder:default=false
 	// This field is used only for char_buf and char_iovec types.
 	ReturnCopy bool `json:"returnCopy"`
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:default=false
+	// This field is used only for char_buf and char_iovec types.
+	Max bool `json:"max"`
 }
 
 type BinarySelector struct {
