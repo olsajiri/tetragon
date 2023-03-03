@@ -1456,12 +1456,18 @@ read_call_arg(void *ctx, struct msg_generic_kprobe *e, int index, int type,
 		size_t count;
 		u8 iter_type;
 		void *tmp;
+		int *s, idx;
 
-		tmp = _(&iov_iter->iter_type);
-		probe_read(&iter_type, sizeof(iter_type), tmp);
+		if (bpf_core_field_exists(iov_iter->iter_type)) {
+			tmp = _(&iov_iter->iter_type);
+			probe_read(&iter_type, sizeof(iter_type), tmp);
+		} else {
+			unsigned int val;
 
-		if (iter_type != ITER_UBUF && iter_type != ITER_IOVEC)
-			return 0;
+			probe_read(&val, sizeof(val), (const void *) arg);
+			val &= ~1;
+			iter_type = val == 4 ? ITER_IOVEC : ITER_UBUF + 1;
+		}
 
 		switch (iter_type) {
 		case ITER_IOVEC:
@@ -1485,8 +1491,19 @@ read_call_arg(void *ctx, struct msg_generic_kprobe *e, int index, int type,
 			probe_read(&count, sizeof(count), tmp);
 
 			size = __copy_char_buf(ctx, orig_off, (unsigned long)buf, count, has_max(argm), e, data_heap);
+			break;
 #endif // __V60_BPF_PROG
 		default:
+			s = (int *)args_off(e, orig_off);
+			idx = 0;
+
+			if (has_max(argm)) {
+				s[0] = 0;
+				idx = 1;
+			}
+			s[idx] = 0;
+			s[idx + 1] = 0;
+			size = 8 + idx * 4;
 			break;
 		}
 		break;
