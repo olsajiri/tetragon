@@ -148,11 +148,8 @@ static inline __attribute__((always_inline)) __u32 get_index(void *ctx)
 {
 	return (__u32)get_attach_cookie(ctx);
 }
-
-#define MAX_ENTRIES_CONFIG 100 /* MaxKprobesMulti in go code */
 #else
 #define get_index(ctx)	   0
-#define MAX_ENTRIES_CONFIG 1
 #endif
 
 static inline __attribute__((always_inline)) bool ty_is_nop(int ty)
