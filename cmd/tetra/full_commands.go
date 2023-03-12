@@ -15,6 +15,7 @@ import (
 	"github.com/cilium/tetragon/cmd/tetra/status"
 	"github.com/cilium/tetragon/cmd/tetra/tracingpolicy"
 	"github.com/cilium/tetragon/cmd/tetra/version"
+	"github.com/cilium/tetragon/cmd/tetra/yaml"
 	"github.com/spf13/cobra"
 )
 
@@ -28,4 +29,5 @@ func addCommands(rootCmd *cobra.Command) {
 	rootCmd.AddCommand(tracingpolicy.New())
 	rootCmd.AddCommand(rthooks.New())
 	rootCmd.AddCommand(dump.New())
+	rootCmd.AddCommand(yaml.New())
 }

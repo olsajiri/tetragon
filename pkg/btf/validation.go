@@ -5,6 +5,7 @@ package btf
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/cilium/ebpf/btf"
@@ -260,4 +261,55 @@ func validateSycall(kspec *v1alpha1.KProbeSpec, name string) error {
 	}
 
 	return nil
+}
+
+func GetSyscallsYaml(notMatch bool) (string, error) {
+	crd := `apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: "syscalls"
+spec:
+  kprobes:`
+
+	filter := `
+    selectors:
+    - matchBinaries:
+      - operator: "In"
+        values:
+        - "/krava"`
+
+	btfFile := "/sys/kernel/btf/vmlinux"
+
+	tetragonBtfEnv := os.Getenv("TETRAGON_BTF")
+	if tetragonBtfEnv != "" {
+		if _, err := os.Stat(tetragonBtfEnv); err != nil {
+			return "", fmt.Errorf("Failed to find BTF: %s", tetragonBtfEnv)
+		}
+		btfFile = tetragonBtfEnv
+	}
+
+	bspec, err := btf.LoadSpec(btfFile)
+	if err != nil {
+		return "", fmt.Errorf("NewBTF error: %v\n", err)
+	}
+
+	for _, key := range syscallinfo.SyscallsNames() {
+		var fn *btf.Func
+
+		key = "__x64_" + key
+
+		err = bspec.TypeByName(key, &fn)
+		if err != nil {
+			continue
+		}
+
+		crd = crd + "\n" + fmt.Sprintf("  - call: \"%s\"", key)
+		crd = crd + "\n" + fmt.Sprintf("    syscall: true")
+
+		if notMatch {
+			crd = crd + fmt.Sprintf(filter)
+		}
+	}
+
+	return crd, nil
 }
