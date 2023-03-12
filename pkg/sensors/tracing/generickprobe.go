@@ -205,13 +205,12 @@ func createMultiKprobeSensor(sensorPath string, multiIDs, multiRetIDs []idtable.
 
 	load := program.Builder(
 		path.Join(option.Config.HubbleLib, loadProgName),
-		"",
+		fmt.Sprintf("%d functions", len(multiIDs)),
 		"kprobe.multi/generic_kprobe",
 		pinPath,
 		"generic_kprobe").
 		SetLoaderData(multiIDs)
 	progs = append(progs, load)
-	logger.GetLogger().Infof("Added multi kprobe sensor: %s (%d functions)", load.Name, len(multiIDs))
 
 	fdinstall := program.MapBuilderPin("fdinstall_map", sensors.PathJoin(sensorPath, "fdinstall_map"), load)
 	maps = append(maps, fdinstall)
@@ -243,14 +242,13 @@ func createMultiKprobeSensor(sensorPath string, multiIDs, multiRetIDs []idtable.
 	if len(multiRetIDs) != 0 {
 		loadret := program.Builder(
 			path.Join(option.Config.HubbleLib, loadProgRetName),
-			"",
+			fmt.Sprintf("%d retkprobes", len(multiIDs)),
 			"kprobe.multi/generic_retkprobe",
 			"multi_retkprobe",
 			"generic_kprobe").
 			SetRetProbe(true).
 			SetLoaderData(multiRetIDs)
 		progs = append(progs, loadret)
-		logger.GetLogger().Infof("Added multi retkprobe sensor: %s (%d functions)", loadret.Name, len(multiRetIDs))
 
 		retProbe := program.MapBuilderPin("retprobe_map", sensors.PathJoin(pinPath, "retprobe_map"), loadret)
 		maps = append(maps, retProbe)
@@ -497,6 +495,10 @@ func createGenericKprobeSensor(name string, kprobes []v1alpha1.KProbeSpec) (*sen
 				multiRetIDs = append(multiRetIDs, kprobeEntry.tableId)
 			}
 			multiIDs = append(multiIDs, kprobeEntry.tableId)
+			logger.GetLogger().
+				WithField("return", setRetprobe).
+				WithField("function", kprobeEntry.funcName).
+				Infof("Added multi kprobe")
 			continue
 		}
 
