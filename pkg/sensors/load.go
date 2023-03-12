@@ -240,6 +240,9 @@ func (s *Sensor) loadMaps(stopCtx context.Context, mapDir string) error {
 
 		// either there's no pin file or the map spec does not match
 		if createMap {
+			if max, ok := m.Prog.MaxEntriesMap[mapSpec.Name]; ok {
+				mapSpec.MaxEntries = max
+			}
 			if err := m.New(mapSpec); err != nil {
 				return fmt.Errorf("failed to open map '%s': %w", m.Name, err)
 			}

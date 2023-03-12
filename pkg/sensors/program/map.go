@@ -98,3 +98,7 @@ func (m *Map) GetFD() (int, error) {
 	}
 	return m.MapHandle.FD(), nil
 }
+
+func (m *Map) SetMaxEntries(max int) {
+	m.Prog.MaxEntriesMap[m.Name] = uint32(max)
+}
