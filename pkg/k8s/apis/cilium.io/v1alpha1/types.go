@@ -246,6 +246,10 @@ type ActionSelector struct {
 	// Action to execute.
 	Action string `json:"action"`
 	// +kubebuilder:validation:Optional
+	// +kubebuilder:default=true
+	// Post action.
+	Post bool `json:"post"`
+	// +kubebuilder:validation:Optional
 	// An arg index for the fd for fdInstall action
 	ArgFd uint32 `json:"argFd"`
 	// +kubebuilder:validation:Optional
