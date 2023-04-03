@@ -194,6 +194,9 @@ spec:
                                 argUrl:
                                   description: A URL for the getUrl action
                                   type: string
+                                nopost:
+                                  description: Post action.
+                                  type: boolean
                               required:
                               - action
                               type: object
@@ -551,6 +554,9 @@ spec:
                                 argUrl:
                                   description: A URL for the getUrl action
                                   type: string
+                                nopost:
+                                  description: Post action.
+                                  type: boolean
                               required:
                               - action
                               type: object
@@ -853,6 +859,9 @@ spec:
                                 argUrl:
                                   description: A URL for the getUrl action
                                   type: string
+                                nopost:
+                                  description: Post action.
+                                  type: boolean
                               required:
                               - action
                               type: object

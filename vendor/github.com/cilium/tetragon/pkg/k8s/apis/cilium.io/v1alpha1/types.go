@@ -260,6 +260,9 @@ type ActionSelector struct {
 	// +kubebuilder:validation:Optional
 	// error value for override action
 	ArgError int32 `json:"argError"`
+	// +kubebuilder:validation:Optional
+	// Post action.
+	NoPost bool `json:"nopost"`
 }
 
 type TracepointSpec struct {
