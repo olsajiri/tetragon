@@ -109,7 +109,6 @@ struct event_config {
 	__u32 t_arg2_ctx_off;
 	__u32 t_arg3_ctx_off;
 	__u32 t_arg4_ctx_off;
-	__u32 sigkill;
 	__u32 syscall;
 	__s32 argreturncopy;
 	__s32 argreturn;
@@ -1242,19 +1241,12 @@ copyfd(struct msg_generic_kprobe *e, int oldfd, int newfd)
 
 #ifdef __LARGE_BPF_PROG
 static inline __attribute__((always_inline)) void
-do_action_sigkill(struct bpf_map_def *config_map, int idx)
+do_action_sigkill(struct bpf_map_def *config_map)
 {
-	struct event_config *config;
-
-	config = map_lookup_elem(config_map, &idx);
-	if (config && config->sigkill)
-		send_signal(FGS_SIGKILL);
+	send_signal(FGS_SIGKILL);
 }
 #else
-static inline __attribute__((always_inline)) void
-do_action_sigkill(struct bpf_map_def *config_map, int idx)
-{
-}
+#define do_action_sigkill(config_map)
 #endif /* __LARGE_BPF_PROG */
 
 static inline __attribute__((always_inline)) __u32
@@ -1282,7 +1274,7 @@ do_action(__u32 i, struct msg_generic_kprobe *e,
 		err = copyfd(e, oldfdi, newfdi);
 		break;
 	case ACTION_SIGKILL:
-		do_action_sigkill(config_map, e->idx);
+		do_action_sigkill(config_map);
 		break;
 	case ACTION_OVERRIDE:
 		error = actions->act[++i];

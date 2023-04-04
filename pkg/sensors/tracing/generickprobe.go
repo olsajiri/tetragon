@@ -441,13 +441,6 @@ func createGenericKprobeSensor(name string, kprobes []v1alpha1.KProbeSpec, polic
 			config.Syscall = 0
 		}
 
-		has_sigkill := selectors.MatchActionSigKill(f)
-		if has_sigkill {
-			config.Sigkill = 1
-		} else {
-			config.Sigkill = 0
-		}
-
 		// create a new entry on the table, and pass its id to BPF-side
 		// so that we can do the matching at event-generation time
 		kprobeEntry := genericKprobe{
