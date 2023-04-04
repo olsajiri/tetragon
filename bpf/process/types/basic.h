@@ -73,6 +73,7 @@ enum {
 	ACTION_GETURL = 6,
 	ACTION_DNSLOOKUP = 7,
 	ACTION_NOPOST = 8,
+	ACTION_SIGNAL = 9,
 };
 
 enum {
@@ -1242,12 +1243,12 @@ copyfd(struct msg_generic_kprobe *e, int oldfd, int newfd)
 
 #ifdef __LARGE_BPF_PROG
 static inline __attribute__((always_inline)) void
-do_action_sigkill(struct bpf_map_def *config_map)
+do_action_signal(struct bpf_map_def *config_map, int signal)
 {
-	send_signal(FGS_SIGKILL);
+	send_signal(signal);
 }
 #else
-#define do_action_sigkill(config_map)
+#define do_action_signal(config_map, signal)
 #endif /* __LARGE_BPF_PROG */
 
 static inline __attribute__((always_inline)) __u32
@@ -1258,6 +1259,7 @@ do_action(__u32 i, struct msg_generic_kprobe *e,
 	int action = actions->act[i];
 	__s32 error, *error_p;
 	int fdi, namei, nopost = 0;
+	int signal __maybe_unused;
 	int newfdi, oldfdi;
 	int err = 0;
 	__u64 id;
@@ -1277,7 +1279,11 @@ do_action(__u32 i, struct msg_generic_kprobe *e,
 		err = copyfd(e, oldfdi, newfdi);
 		break;
 	case ACTION_SIGKILL:
-		do_action_sigkill(config_map);
+		do_action_signal(config_map, FGS_SIGKILL);
+		break;
+	case ACTION_SIGNAL:
+		signal = actions->act[++i];
+		do_action_signal(config_map, signal);
 		break;
 	case ACTION_OVERRIDE:
 		error = actions->act[++i];
