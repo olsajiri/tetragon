@@ -263,6 +263,9 @@ type ActionSelector struct {
 	// +kubebuilder:validation:Optional
 	// Post action.
 	NoPost bool `json:"nopost"`
+	// +kubebuilder:validation:Optional
+	// A signal number for signal action
+	ArgSig uint32 `json:"argSig"`
 }
 
 type TracepointSpec struct {
