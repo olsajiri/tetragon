@@ -1256,10 +1256,12 @@ do_action(__u32 i, struct msg_generic_kprobe *e,
 {
 	int action = actions->act[i];
 	__s32 error, *error_p;
-	int fdi, namei;
+	int fdi, namei, nopost = 0;
 	int newfdi, oldfdi;
 	int err = 0;
 	__u64 id;
+
+	nopost = actions->act[++i];
 
 	switch (action) {
 	case ACTION_UNFOLLOWFD:
@@ -1303,7 +1305,7 @@ do_action(__u32 i, struct msg_generic_kprobe *e,
 	}
 	if (!err) {
 		e->action = action;
-		return ++i;
+		return nopost ? 0 : ++i;
 	}
 	return 0;
 }

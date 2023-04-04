@@ -412,6 +412,11 @@ func ParseMatchAction(k *KernelSelectorState, action *v1alpha1.ActionSelector, a
 		return fmt.Errorf("parseMatchAction: ActionType %s unknown", action.Action)
 	}
 	WriteSelectorUint32(k, act)
+	if action.NoPost {
+		WriteSelectorUint32(k, 1)
+	} else {
+		WriteSelectorUint32(k, 0)
+	}
 	switch act {
 	case ActionTypeFollowFd, ActionTypeCopyFd:
 		WriteSelectorUint32(k, action.ArgFd)
