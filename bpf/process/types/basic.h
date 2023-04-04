@@ -1242,7 +1242,7 @@ copyfd(struct msg_generic_kprobe *e, int oldfd, int newfd)
 
 #ifdef __LARGE_BPF_PROG
 static inline __attribute__((always_inline)) void
-__do_action_sigkill(struct bpf_map_def *config_map, int idx)
+do_action_sigkill(struct bpf_map_def *config_map, int idx)
 {
 	struct event_config *config;
 
@@ -1252,13 +1252,13 @@ __do_action_sigkill(struct bpf_map_def *config_map, int idx)
 }
 #else
 static inline __attribute__((always_inline)) void
-__do_action_sigkill(struct bpf_map_def *config_map, int idx)
+do_action_sigkill(struct bpf_map_def *config_map, int idx)
 {
 }
 #endif /* __LARGE_BPF_PROG */
 
-static inline __attribute__((always_inline)) long
-__do_action(long i, struct msg_generic_kprobe *e,
+static inline __attribute__((always_inline)) __u32
+do_action(__u32 i, struct msg_generic_kprobe *e,
 	    struct selector_action *actions, struct bpf_map_def *override_tasks,
 	    struct bpf_map_def *config_map)
 {
@@ -1282,7 +1282,7 @@ __do_action(long i, struct msg_generic_kprobe *e,
 		err = copyfd(e, oldfdi, newfdi);
 		break;
 	case ACTION_SIGKILL:
-		__do_action_sigkill(config_map, e->idx);
+		do_action_sigkill(config_map, e->idx);
 		break;
 	case ACTION_OVERRIDE:
 		error = actions->act[++i];
@@ -1313,26 +1313,38 @@ __do_action(long i, struct msg_generic_kprobe *e,
 		e->action = action;
 		return ++i;
 	}
-	return -1;
+	return 0;
 }
 
-static inline __attribute__((always_inline)) long
+static inline __attribute__((always_inline)) bool
+has_action(struct selector_action *actions, __u32 idx)
+{
+	__u32 offset = idx * sizeof(__u32) + sizeof(*actions);
+
+	return offset < actions->actionlen;
+}
+
+/* Currently supporting 2 actions for selector. */
+static inline __attribute__((always_inline)) bool
 do_actions(struct msg_generic_kprobe *e, struct selector_action *actions,
 	   struct bpf_map_def *override_tasks, struct bpf_map_def *config_map)
 {
-	/* Clang really doesn't want to unwind a loop here. */
-	long i = 0;
+	__u32 i = 0;
 
-	// post action has no action record
-	if (actions->actionlen == sizeof(*actions))
+	/* no action defaults to post action -> true */
+	if (!has_action(actions, i))
 		return true;
 
-	i = __do_action(i, e, actions, override_tasks, config_map);
-	if (i)
-		goto out;
-	i = __do_action(i, e, actions, override_tasks, config_map);
-out:
-	return i > 0 ? true : 0;
+	i = do_action(i, e, actions, override_tasks, config_map);
+	if (!i)
+		return false;
+
+	/* no second action, follow first action decision -> true */
+	if (!has_action(actions, i))
+		return true;
+
+	i = do_action(i, e, actions, override_tasks, config_map);
+	return i != 0;
 }
 
 static inline __attribute__((always_inline)) long
