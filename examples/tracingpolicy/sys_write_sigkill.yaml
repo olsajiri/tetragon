@@ -73,4 +73,4 @@ spec:
         - "/tmp/passwd"
       matchActions:
       - action: Signal
-        signal: 2
+        argSig: 2
