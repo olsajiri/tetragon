@@ -72,6 +72,7 @@ enum {
 	ACTION_COPYFD = 5,
 	ACTION_GETURL = 6,
 	ACTION_DNSLOOKUP = 7,
+	ACTION_NOPOST = 8,
 };
 
 enum {
@@ -1300,6 +1301,8 @@ do_action(__u32 i, struct msg_generic_kprobe *e,
 		/* Set the URL or DNS action */
 		e->action_arg_id = actions->act[++i];
 		break;
+	case ACTION_NOPOST:
+		nopost = 1;
 	default:
 		break;
 	}
