@@ -42,8 +42,6 @@ import (
 //   stops any further invocations of the attached eBPF program.
 
 var (
-	tracefsPath = "/sys/kernel/debug/tracing"
-
 	errInvalidInput = errors.New("invalid input")
 )
 
@@ -136,10 +134,14 @@ func (pl *perfEventLink) Unpin() error {
 }
 
 func (pl *perfEventLink) Close() error {
-	if err := pl.pe.Close(); err != nil {
-		return fmt.Errorf("perf event link close: %w", err)
+	if err := pl.fd.Close(); err != nil {
+		return fmt.Errorf("perf link close: %w", err)
 	}
-	return pl.fd.Close()
+
+	if err := pl.pe.Close(); err != nil {
+		return fmt.Errorf("perf event close: %w", err)
+	}
+	return nil
 }
 
 func (pl *perfEventLink) Update(prog *ebpf.Program) error {
@@ -270,13 +272,13 @@ func unsafeStringPtr(str string) (unsafe.Pointer, error) {
 // can pass a raw symbol name, e.g. a kernel symbol containing dots.
 func getTraceEventID(group, name string) (uint64, error) {
 	name = sanitizeSymbol(name)
-	path, err := sanitizePath(tracefsPath, "events", group, name, "id")
+	path, err := sanitizeTracefsPath("events", group, name, "id")
 	if err != nil {
 		return 0, err
 	}
 	tid, err := readUint64FromFile("%d\n", path)
 	if errors.Is(err, os.ErrNotExist) {
-		return 0, fmt.Errorf("trace event %s/%s: %w", group, name, os.ErrNotExist)
+		return 0, err
 	}
 	if err != nil {
 		return 0, fmt.Errorf("reading trace event ID of %s/%s: %w", group, name, err)
@@ -305,7 +307,11 @@ func openTracepointPerfEvent(tid uint64, pid int) (*sys.FD, error) {
 	return sys.NewFD(fd)
 }
 
-func sanitizePath(base string, path ...string) (string, error) {
+func sanitizeTracefsPath(path ...string) (string, error) {
+	base, err := getTracefsPath()
+	if err != nil {
+		return "", err
+	}
 	l := filepath.Join(path...)
 	p := filepath.Join(base, l)
 	if !strings.HasPrefix(p, base) {
@@ -380,7 +386,7 @@ func readUint64FromFileOnce(format string, path ...string) (uint64, error) {
 //
 // https://elixir.bootlin.com/linux/v5.16.8/source/kernel/bpf/syscall.c#L4307
 // https://github.com/torvalds/linux/commit/b89fbfbb854c9afc3047e8273cc3a694650b802e
-var haveBPFLinkPerfEvent = internal.FeatureTest("bpf_link_perf_event", "5.15", func() error {
+var haveBPFLinkPerfEvent = internal.NewFeatureTest("bpf_link_perf_event", "5.15", func() error {
 	prog, err := ebpf.NewProgram(&ebpf.ProgramSpec{
 		Name: "probe_bpf_perf_link",
 		Type: ebpf.Kprobe,
@@ -432,3 +438,25 @@ func isValidTraceID(s string) bool {
 
 	return true
 }
+
+// getTracefsPath will return a correct path to the tracefs mount point.
+// Since kernel 4.1 tracefs should be mounted by default at /sys/kernel/tracing,
+// but may be also be available at /sys/kernel/debug/tracing if debugfs is mounted.
+// The available tracefs paths will depends on distribution choices.
+var getTracefsPath = internal.Memoize(func() (string, error) {
+	for _, p := range []struct {
+		path   string
+		fsType int64
+	}{
+		{"/sys/kernel/tracing", unix.TRACEFS_MAGIC},
+		{"/sys/kernel/debug/tracing", unix.TRACEFS_MAGIC},
+		// RHEL/CentOS
+		{"/sys/kernel/debug/tracing", unix.DEBUGFS_MAGIC},
+	} {
+		if fsType, err := internal.FSType(p.path); err == nil && fsType == p.fsType {
+			return p.path, nil
+		}
+	}
+
+	return "", errors.New("neither debugfs nor tracefs are mounted")
+})

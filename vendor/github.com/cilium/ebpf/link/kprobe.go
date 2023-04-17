@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"runtime"
 	"strings"
 	"syscall"
@@ -16,16 +15,12 @@ import (
 	"github.com/cilium/ebpf/internal/unix"
 )
 
-var (
-	kprobeEventsPath = filepath.Join(tracefsPath, "kprobe_events")
-)
-
 type probeType uint8
 
 type probeArgs struct {
 	symbol, group, path          string
 	offset, refCtrOffset, cookie uint64
-	pid                          int
+	pid, retprobeMaxActive       int
 	ret                          bool
 }
 
@@ -41,6 +36,16 @@ type KprobeOptions struct {
 	// Can be used to insert kprobes at arbitrary offsets in kernel functions,
 	// e.g. in places where functions have been inlined.
 	Offset uint64
+	// Increase the maximum number of concurrent invocations of a kretprobe.
+	// Required when tracing some long running functions in the kernel.
+	//
+	// Deprecated: this setting forces the use of an outdated kernel API and is not portable
+	// across kernel versions.
+	RetprobeMaxActive int
+	// Prefix used for the event name if the kprobe must be attached using tracefs.
+	// The group name will be formatted as `<prefix>_<randomstr>`.
+	// The default empty string is equivalent to "ebpf" as the prefix.
+	TraceFSPrefix string
 }
 
 const (
@@ -55,11 +60,13 @@ func (pt probeType) String() string {
 	return "uprobe"
 }
 
-func (pt probeType) EventsPath() string {
-	if pt == kprobeType {
-		return kprobeEventsPath
+func (pt probeType) EventsFile() (*os.File, error) {
+	path, err := sanitizeTracefsPath(fmt.Sprintf("%s_events", pt.String()))
+	if err != nil {
+		return nil, err
 	}
-	return uprobeEventsPath
+
+	return os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0666)
 }
 
 func (pt probeType) PerfEventType(ret bool) perfEventType {
@@ -84,6 +91,10 @@ func (pt probeType) PerfEventType(ret bool) perfEventType {
 // Losing the reference to the resulting Link (kp) will close the Kprobe
 // and prevent further execution of prog. The Link must be Closed during
 // program shutdown to avoid leaking system resources.
+//
+// If attaching to symbol fails, automatically retries with the running
+// platform's syscall prefix (e.g. __x64_) to support attaching to syscalls
+// in a portable fashion.
 func Kprobe(symbol string, prog *ebpf.Program, opts *KprobeOptions) (Link, error) {
 	k, err := kprobe(symbol, prog, opts, false)
 	if err != nil {
@@ -108,6 +119,10 @@ func Kprobe(symbol string, prog *ebpf.Program, opts *KprobeOptions) (Link, error
 // Losing the reference to the resulting Link (kp) will close the Kretprobe
 // and prevent further execution of prog. The Link must be Closed during
 // program shutdown to avoid leaking system resources.
+//
+// If attaching to symbol fails, automatically retries with the running
+// platform's syscall prefix (e.g. __x64_) to support attaching to syscalls
+// in a portable fashion.
 //
 // On kernels 5.10 and earlier, setting a kretprobe on a nonexistent symbol
 // incorrectly returns unix.EINVAL instead of os.ErrNotExist.
@@ -176,8 +191,10 @@ func kprobe(symbol string, prog *ebpf.Program, opts *KprobeOptions, ret bool) (*
 	}
 
 	if opts != nil {
+		args.retprobeMaxActive = opts.RetprobeMaxActive
 		args.cookie = opts.Cookie
 		args.offset = opts.Offset
+		args.group = opts.TraceFSPrefix
 	}
 
 	// Use kprobe PMU if the kernel has it available.
@@ -190,7 +207,7 @@ func kprobe(symbol string, prog *ebpf.Program, opts *KprobeOptions, ret bool) (*
 		return tp, nil
 	}
 	if err != nil && !errors.Is(err, ErrNotSupported) {
-		return nil, fmt.Errorf("creating perf_kprobe PMU: %w", err)
+		return nil, fmt.Errorf("creating perf_kprobe PMU (arch-specific fallback for %q): %w", symbol, err)
 	}
 
 	// Use tracefs if kprobe PMU is missing.
@@ -201,7 +218,7 @@ func kprobe(symbol string, prog *ebpf.Program, opts *KprobeOptions, ret bool) (*
 		tp, err = tracefsKprobe(args)
 	}
 	if err != nil {
-		return nil, fmt.Errorf("creating trace event '%s' in tracefs: %w", symbol, err)
+		return nil, fmt.Errorf("creating tracefs event (arch-specific fallback for %q): %w", symbol, err)
 	}
 
 	return tp, nil
@@ -229,6 +246,11 @@ func pmuProbe(typ probeType, args probeArgs) (*perfEvent, error) {
 	}
 	if err != nil {
 		return nil, err
+	}
+
+	// Use tracefs if we want to set kretprobe's retprobeMaxActive.
+	if args.retprobeMaxActive != 0 {
+		return nil, fmt.Errorf("pmu probe: non-zero retprobeMaxActive: %w", ErrNotSupported)
 	}
 
 	var config uint64
@@ -347,51 +369,35 @@ func tracefsKprobe(args probeArgs) (*perfEvent, error) {
 // Path and offset are only set in the case of uprobe(s) and are used to set
 // the executable/library path on the filesystem and the offset where the probe is inserted.
 // A perf event is then opened on the newly-created trace event and returned to the caller.
-func tracefsProbe(typ probeType, args probeArgs) (_ *perfEvent, err error) {
+func tracefsProbe(typ probeType, args probeArgs) (*perfEvent, error) {
+	groupPrefix := "ebpf"
+	if args.group != "" {
+		groupPrefix = args.group
+	}
+
 	// Generate a random string for each trace event we attempt to create.
 	// This value is used as the 'group' token in tracefs to allow creating
 	// multiple kprobe trace events with the same name.
-	group, err := randomGroup("ebpf")
+	group, err := randomGroup(groupPrefix)
 	if err != nil {
 		return nil, fmt.Errorf("randomizing group name: %w", err)
 	}
 	args.group = group
 
-	// Before attempting to create a trace event through tracefs,
-	// check if an event with the same group and name already exists.
-	// Kernels 4.x and earlier don't return os.ErrExist on writing a duplicate
-	// entry, so we need to rely on reads for detecting uniqueness.
-	_, err = getTraceEventID(group, args.symbol)
-	if err == nil {
-		return nil, fmt.Errorf("trace event already exists: %s/%s", group, args.symbol)
-	}
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return nil, fmt.Errorf("checking trace event %s/%s: %w", group, args.symbol, err)
-	}
-
 	// Create the [k,u]probe trace event using tracefs.
-	if err := createTraceFSProbeEvent(typ, args); err != nil {
-		return nil, fmt.Errorf("creating probe entry on tracefs: %w", err)
-	}
-	defer func() {
-		if err != nil {
-			// Make sure we clean up the created tracefs event when we return error.
-			// If a livepatch handler is already active on the symbol, the write to
-			// tracefs will succeed, a trace event will show up, but creating the
-			// perf event will fail with EBUSY.
-			_ = closeTraceFSProbeEvent(typ, args.group, args.symbol)
-		}
-	}()
-
-	// Get the newly-created trace event's id.
-	tid, err := getTraceEventID(group, args.symbol)
+	tid, err := createTraceFSProbeEvent(typ, args)
 	if err != nil {
-		return nil, fmt.Errorf("getting trace event id: %w", err)
+		return nil, fmt.Errorf("creating probe entry on tracefs: %w", err)
 	}
 
 	// Kprobes are ephemeral tracepoints and share the same perf event type.
 	fd, err := openTracepointPerfEvent(tid, args.pid)
 	if err != nil {
+		// Make sure we clean up the created tracefs event when we return error.
+		// If a livepatch handler is already active on the symbol, the write to
+		// tracefs will succeed, a trace event will show up, but creating the
+		// perf event will fail with EBUSY.
+		_ = closeTraceFSProbeEvent(typ, args.group, args.symbol)
 		return nil, err
 	}
 
@@ -405,15 +411,32 @@ func tracefsProbe(typ probeType, args probeArgs) (_ *perfEvent, err error) {
 	}, nil
 }
 
-// createTraceFSProbeEvent creates a new ephemeral trace event by writing to
-// <tracefs>/[k,u]probe_events. Returns os.ErrNotExist if symbol is not a valid
+var errInvalidMaxActive = errors.New("can only set maxactive on kretprobes")
+
+// createTraceFSProbeEvent creates a new ephemeral trace event.
+//
+// Returns os.ErrNotExist if symbol is not a valid
 // kernel symbol, or if it is not traceable with kprobes. Returns os.ErrExist
-// if a probe with the same group and symbol already exists.
-func createTraceFSProbeEvent(typ probeType, args probeArgs) error {
+// if a probe with the same group and symbol already exists. Returns an error if
+// args.retprobeMaxActive is used on non kprobe types. Returns ErrNotSupported if
+// the kernel is too old to support kretprobe maxactive.
+func createTraceFSProbeEvent(typ probeType, args probeArgs) (uint64, error) {
+	// Before attempting to create a trace event through tracefs,
+	// check if an event with the same group and name already exists.
+	// Kernels 4.x and earlier don't return os.ErrExist on writing a duplicate
+	// entry, so we need to rely on reads for detecting uniqueness.
+	_, err := getTraceEventID(args.group, args.symbol)
+	if err == nil {
+		return 0, fmt.Errorf("trace event %s/%s: %w", args.group, args.symbol, os.ErrExist)
+	}
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return 0, fmt.Errorf("checking trace event %s/%s: %w", args.group, args.symbol, err)
+	}
+
 	// Open the kprobe_events file in tracefs.
-	f, err := os.OpenFile(typ.EventsPath(), os.O_APPEND|os.O_WRONLY, 0666)
+	f, err := typ.EventsFile()
 	if err != nil {
-		return fmt.Errorf("error opening '%s': %w", typ.EventsPath(), err)
+		return 0, err
 	}
 	defer f.Close()
 
@@ -434,8 +457,11 @@ func createTraceFSProbeEvent(typ probeType, args probeArgs) error {
 		// subsampling or rate limiting logic can be more accurately implemented in
 		// the eBPF program itself.
 		// See Documentation/kprobes.txt for more details.
+		if args.retprobeMaxActive != 0 && !args.ret {
+			return 0, errInvalidMaxActive
+		}
 		token = kprobeToken(args)
-		pe = fmt.Sprintf("%s:%s/%s %s", probePrefix(args.ret), args.group, sanitizeSymbol(args.symbol), token)
+		pe = fmt.Sprintf("%s:%s/%s %s", probePrefix(args.ret, args.retprobeMaxActive), args.group, sanitizeSymbol(args.symbol), token)
 	case uprobeType:
 		// The uprobe_events syntax is as follows:
 		// p[:[GRP/]EVENT] PATH:OFFSET [FETCHARGS] : Set a probe
@@ -447,49 +473,73 @@ func createTraceFSProbeEvent(typ probeType, args probeArgs) error {
 		// p:ebpf_5678/main_mySymbol /bin/mybin:0x12345(0x123)
 		//
 		// See Documentation/trace/uprobetracer.txt for more details.
+		if args.retprobeMaxActive != 0 {
+			return 0, errInvalidMaxActive
+		}
 		token = uprobeToken(args)
-		pe = fmt.Sprintf("%s:%s/%s %s", probePrefix(args.ret), args.group, args.symbol, token)
+		pe = fmt.Sprintf("%s:%s/%s %s", probePrefix(args.ret, 0), args.group, args.symbol, token)
 	}
 	_, err = f.WriteString(pe)
 
 	// Since commit 97c753e62e6c, ENOENT is correctly returned instead of EINVAL
 	// when trying to create a retprobe for a missing symbol.
 	if errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("token %s: not found: %w", token, err)
+		return 0, fmt.Errorf("token %s: not found: %w", token, err)
 	}
 	// Since commit ab105a4fb894, EILSEQ is returned when a kprobe sym+offset is resolved
 	// to an invalid insn boundary. The exact conditions that trigger this error are
 	// arch specific however.
 	if errors.Is(err, syscall.EILSEQ) {
-		return fmt.Errorf("token %s: bad insn boundary: %w", token, os.ErrNotExist)
+		return 0, fmt.Errorf("token %s: bad insn boundary: %w", token, os.ErrNotExist)
 	}
 	// ERANGE is returned when the `SYM[+offs]` token is too big and cannot
 	// be resolved.
 	if errors.Is(err, syscall.ERANGE) {
-		return fmt.Errorf("token %s: offset too big: %w", token, os.ErrNotExist)
+		return 0, fmt.Errorf("token %s: offset too big: %w", token, os.ErrNotExist)
 	}
 
 	if err != nil {
-		return fmt.Errorf("token %s: writing '%s': %w", token, pe, err)
+		return 0, fmt.Errorf("token %s: writing '%s': %w", token, pe, err)
 	}
 
-	return nil
+	// Get the newly-created trace event's id.
+	tid, err := getTraceEventID(args.group, args.symbol)
+	if args.retprobeMaxActive != 0 && errors.Is(err, os.ErrNotExist) {
+		// Kernels < 4.12 don't support maxactive and therefore auto generate
+		// group and event names from the symbol and offset. The symbol is used
+		// without any sanitization.
+		// See https://elixir.bootlin.com/linux/v4.10/source/kernel/trace/trace_kprobe.c#L712
+		event := fmt.Sprintf("kprobes/r_%s_%d", args.symbol, args.offset)
+		if err := removeTraceFSProbeEvent(typ, event); err != nil {
+			return 0, fmt.Errorf("failed to remove spurious maxactive event: %s", err)
+		}
+		return 0, fmt.Errorf("create trace event with non-default maxactive: %w", ErrNotSupported)
+	}
+	if err != nil {
+		return 0, fmt.Errorf("get trace event id: %w", err)
+	}
+
+	return tid, nil
 }
 
 // closeTraceFSProbeEvent removes the [k,u]probe with the given type, group and symbol
 // from <tracefs>/[k,u]probe_events.
 func closeTraceFSProbeEvent(typ probeType, group, symbol string) error {
-	f, err := os.OpenFile(typ.EventsPath(), os.O_APPEND|os.O_WRONLY, 0666)
+	pe := fmt.Sprintf("%s/%s", group, sanitizeSymbol(symbol))
+	return removeTraceFSProbeEvent(typ, pe)
+}
+
+func removeTraceFSProbeEvent(typ probeType, pe string) error {
+	f, err := typ.EventsFile()
 	if err != nil {
-		return fmt.Errorf("error opening %s: %w", typ.EventsPath(), err)
+		return err
 	}
 	defer f.Close()
 
 	// See [k,u]probe_events syntax above. The probe type does not need to be specified
 	// for removals.
-	pe := fmt.Sprintf("-:%s/%s", group, sanitizeSymbol(symbol))
-	if _, err = f.WriteString(pe); err != nil {
-		return fmt.Errorf("writing '%s' to '%s': %w", pe, typ.EventsPath(), err)
+	if _, err = f.WriteString("-:" + pe); err != nil {
+		return fmt.Errorf("remove event %q from %s: %w", pe, f.Name(), err)
 	}
 
 	return nil
@@ -517,8 +567,11 @@ func randomGroup(prefix string) (string, error) {
 	return group, nil
 }
 
-func probePrefix(ret bool) string {
+func probePrefix(ret bool, maxActive int) string {
 	if ret {
+		if maxActive > 0 {
+			return fmt.Sprintf("r%d", maxActive)
+		}
 		return "r"
 	}
 	return "p"

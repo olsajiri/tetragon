@@ -9,14 +9,26 @@ import (
 
 	"github.com/cilium/ebpf/asm"
 	"github.com/cilium/ebpf/internal"
+	"github.com/cilium/ebpf/internal/sys"
 )
 
 const maxTypeDepth = 32
 
 // TypeID identifies a type in a BTF section.
-type TypeID uint32
+type TypeID = sys.TypeID
 
 // Type represents a type described by BTF.
+//
+// Identity of Type follows the [Go specification]: two Types are considered
+// equal if they have the same concrete type and the same dynamic value, aka
+// they point at the same location in memory. This means that the following
+// Types are considered distinct even though they have the same "shape".
+//
+//	a := &Int{Size: 1}
+//	b := &Int{Size: 1}
+//	a != b
+//
+// [Go specification]: https://go.dev/ref/spec#Comparison_operators
 type Type interface {
 	// Type can be formatted using the %s and %v verbs. %s outputs only the
 	// identity of the type, without any detail. %v outputs additional detail.
@@ -54,18 +66,6 @@ var (
 	_ Type = (*typeTag)(nil)
 	_ Type = (*cycle)(nil)
 )
-
-// types is a list of Type.
-//
-// The order determines the ID of a type.
-type types []Type
-
-func (ts types) ByID(id TypeID) (Type, error) {
-	if int(id) > len(ts) {
-		return nil, fmt.Errorf("type ID %d: %w", id, ErrNotFound)
-	}
-	return ts[id], nil
-}
 
 // Void is the unit type of BTF.
 type Void struct{}
@@ -408,6 +408,12 @@ func FuncMetadata(ins *asm.Instruction) *Func {
 	return fn
 }
 
+// WithFuncMetadata adds a btf.Func to the Metadata of asm.Instruction.
+func WithFuncMetadata(ins asm.Instruction, fn *Func) asm.Instruction {
+	ins.Metadata.Set(funcInfoMeta{}, fn)
+	return ins
+}
+
 func (f *Func) Format(fs fmt.State, verb rune) {
 	formatType(fs, verb, f, f.Linkage, "proto=", f.Type)
 }
@@ -487,6 +493,7 @@ func (ds *Datasec) copy() Type {
 //
 // It is not a valid Type.
 type VarSecinfo struct {
+	// Var or Func.
 	Type   Type
 	Offset uint32
 	Size   uint32
@@ -639,16 +646,31 @@ func Sizeof(typ Type) (int, error) {
 
 // alignof returns the alignment of a type.
 //
-// Currently only supports the subset of types necessary for bitfield relocations.
+// Returns an error if the Type can't be aligned, like an integer with an uneven
+// size. Currently only supports the subset of types necessary for bitfield
+// relocations.
 func alignof(typ Type) (int, error) {
+	var n int
+
 	switch t := UnderlyingType(typ).(type) {
 	case *Enum:
-		return int(t.size()), nil
+		n = int(t.size())
 	case *Int:
-		return int(t.Size), nil
+		n = int(t.Size)
 	default:
 		return 0, fmt.Errorf("can't calculate alignment of %T", t)
 	}
+
+	if !pow(n) {
+		return 0, fmt.Errorf("alignment value %d is not a power of two", n)
+	}
+
+	return n, nil
+}
+
+// pow returns true if n is a power of two.
+func pow(n int) bool {
+	return n != 0 && (n&(n-1)) == 0
 }
 
 // Transformer modifies a given Type and returns the result.
@@ -713,23 +735,28 @@ type typeDeque = internal.Deque[*Type]
 // inflateRawTypes takes a list of raw btf types linked via type IDs, and turns
 // it into a graph of Types connected via pointers.
 //
-// If baseTypes are provided, then the raw types are
-// considered to be of a split BTF (e.g., a kernel module).
+// If base is provided, then the raw types are considered to be of a split BTF
+// (e.g., a kernel module).
 //
-// Returns  a slice of types indexed by TypeID. Since BTF ignores compilation
+// Returns a slice of types indexed by TypeID. Since BTF ignores compilation
 // units, multiple types may share the same name. A Type may form a cyclic graph
 // by pointing at itself.
-func inflateRawTypes(rawTypes []rawType, baseTypes types, rawStrings *stringTable) ([]Type, error) {
+func inflateRawTypes(rawTypes []rawType, rawStrings *stringTable, base *Spec) ([]Type, error) {
 	types := make([]Type, 0, len(rawTypes)+1) // +1 for Void added to base types
 
-	typeIDOffset := TypeID(1) // Void is TypeID(0), so the rest starts from TypeID(1)
+	// Void is defined to always be type ID 0, and is thus omitted from BTF.
+	types = append(types, (*Void)(nil))
 
-	if baseTypes == nil {
-		// Void is defined to always be type ID 0, and is thus omitted from BTF.
-		types = append(types, (*Void)(nil))
-	} else {
-		// For split BTF, the next ID is max base BTF type ID + 1
-		typeIDOffset = TypeID(len(baseTypes))
+	firstTypeID := TypeID(0)
+	if base != nil {
+		var err error
+		firstTypeID, err = base.nextTypeID()
+		if err != nil {
+			return nil, err
+		}
+
+		// Split BTF doesn't contain Void.
+		types = types[:0]
 	}
 
 	type fixupDef struct {
@@ -738,39 +765,42 @@ func inflateRawTypes(rawTypes []rawType, baseTypes types, rawStrings *stringTabl
 	}
 
 	var fixups []fixupDef
-	fixup := func(id TypeID, typ *Type) {
-		if id < TypeID(len(baseTypes)) {
-			*typ = baseTypes[id]
-			return
+	fixup := func(id TypeID, typ *Type) bool {
+		if id < firstTypeID {
+			if baseType, err := base.TypeByID(id); err == nil {
+				*typ = baseType
+				return true
+			}
 		}
 
-		idx := id
-		if baseTypes != nil {
-			idx = id - TypeID(len(baseTypes))
-		}
-		if idx < TypeID(len(types)) {
+		idx := int(id - firstTypeID)
+		if idx < len(types) {
 			// We've already inflated this type, fix it up immediately.
 			*typ = types[idx]
-			return
+			return true
 		}
+
 		fixups = append(fixups, fixupDef{id, typ})
+		return false
 	}
 
 	type assertion struct {
+		id   TypeID
 		typ  *Type
 		want reflect.Type
 	}
 
 	var assertions []assertion
-	assert := func(typ *Type, want reflect.Type) error {
-		if *typ != nil {
-			// The type has already been fixed up, check the type immediately.
-			if reflect.TypeOf(*typ) != want {
-				return fmt.Errorf("expected %s, got %T", want, *typ)
-			}
+	fixupAndAssert := func(id TypeID, typ *Type, want reflect.Type) error {
+		if !fixup(id, typ) {
+			assertions = append(assertions, assertion{id, typ, want})
 			return nil
 		}
-		assertions = append(assertions, assertion{typ, want})
+
+		// The type has already been fixed up, check the type immediately.
+		if reflect.TypeOf(*typ) != want {
+			return fmt.Errorf("type ID %d: expected %s, got %T", id, want, *typ)
+		}
 		return nil
 	}
 
@@ -839,11 +869,15 @@ func inflateRawTypes(rawTypes []rawType, baseTypes types, rawStrings *stringTabl
 	}
 
 	var declTags []*declTag
-	for i, raw := range rawTypes {
+	for _, raw := range rawTypes {
 		var (
-			id  = typeIDOffset + TypeID(i)
+			id  = firstTypeID + TypeID(len(types))
 			typ Type
 		)
+
+		if id < firstTypeID {
+			return nil, fmt.Errorf("no more type IDs")
+		}
 
 		name, err := rawStrings.Lookup(raw.NameOff)
 		if err != nil {
@@ -928,8 +962,7 @@ func inflateRawTypes(rawTypes []rawType, baseTypes types, rawStrings *stringTabl
 
 		case kindFunc:
 			fn := &Func{name, nil, raw.Linkage()}
-			fixup(raw.Type(), &fn.Type)
-			if err := assert(&fn.Type, reflect.TypeOf((*FuncProto)(nil))); err != nil {
+			if err := fixupAndAssert(raw.Type(), &fn.Type, reflect.TypeOf((*FuncProto)(nil))); err != nil {
 				return nil, err
 			}
 			typ = fn
@@ -971,9 +1004,6 @@ func inflateRawTypes(rawTypes []rawType, baseTypes types, rawStrings *stringTabl
 			}
 			for i := range vars {
 				fixup(btfVars[i].Type, &vars[i].Type)
-				if err := assert(&vars[i].Type, reflect.TypeOf((*Var)(nil))); err != nil {
-					return nil, err
-				}
 			}
 			typ = &Datasec{name, raw.Size(), vars}
 
@@ -1018,19 +1048,20 @@ func inflateRawTypes(rawTypes []rawType, baseTypes types, rawStrings *stringTabl
 	}
 
 	for _, fixup := range fixups {
-		i := int(fixup.id)
-		if i >= len(types)+len(baseTypes) {
-			return nil, fmt.Errorf("reference to invalid type id: %d", fixup.id)
-		}
-		if i < len(baseTypes) {
-			return nil, fmt.Errorf("fixup for base type id %d is not expected", i)
+		if fixup.id < firstTypeID {
+			return nil, fmt.Errorf("fixup for base type id %d is not expected", fixup.id)
 		}
 
-		*fixup.typ = types[i-len(baseTypes)]
+		idx := int(fixup.id - firstTypeID)
+		if idx >= len(types) {
+			return nil, fmt.Errorf("reference to invalid type id: %d", fixup.id)
+		}
+
+		*fixup.typ = types[idx]
 	}
 
 	for _, bitfieldFixup := range bitfieldFixups {
-		if bitfieldFixup.id < TypeID(len(baseTypes)) {
+		if bitfieldFixup.id < firstTypeID {
 			return nil, fmt.Errorf("bitfield fixup from split to base types is not expected")
 		}
 
@@ -1044,7 +1075,7 @@ func inflateRawTypes(rawTypes []rawType, baseTypes types, rawStrings *stringTabl
 
 	for _, assertion := range assertions {
 		if reflect.TypeOf(*assertion.typ) != assertion.want {
-			return nil, fmt.Errorf("expected %s, got %T", assertion.want, *assertion.typ)
+			return nil, fmt.Errorf("type ID %d: expected %s, got %T", assertion.id, assertion.want, *assertion.typ)
 		}
 	}
 
@@ -1132,10 +1163,7 @@ func formatType(f fmt.State, verb rune, t formattableType, extra ...interface{})
 		return
 	}
 
-	// This is the same as %T, but elides the package name. Assumes that
-	// formattableType is implemented by a pointer receiver.
-	goTypeName := reflect.TypeOf(t).Elem().Name()
-	_, _ = io.WriteString(f, goTypeName)
+	_, _ = io.WriteString(f, internal.GoTypeName(t))
 
 	if name := t.TypeName(); name != "" {
 		// Output BTF type name if present.

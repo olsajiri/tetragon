@@ -4,7 +4,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"sync"
+	"io"
 
 	"github.com/cilium/ebpf/asm"
 	"github.com/cilium/ebpf/btf"
@@ -86,11 +86,6 @@ func applyRelocations(insns asm.Instructions, target *btf.Spec, bo binary.ByteOr
 
 	if bo == nil {
 		bo = internal.NativeEndian
-	}
-
-	target, err := maybeLoadKernelBTF(target)
-	if err != nil {
-		return err
 	}
 
 	fixups, err := btf.CORERelocate(relos, target, bo)
@@ -187,11 +182,79 @@ func fixupAndValidate(insns asm.Instructions) error {
 		ins := iter.Ins
 
 		// Map load was tagged with a Reference, but does not contain a Map pointer.
-		if ins.IsLoadFromMap() && ins.Reference() != "" && ins.Map() == nil {
-			return fmt.Errorf("instruction %d: map %s: %w", iter.Index, ins.Reference(), asm.ErrUnsatisfiedMapReference)
+		needsMap := ins.Reference() != "" || ins.Metadata.Get(kconfigMetaKey{}) != nil
+		if ins.IsLoadFromMap() && needsMap && ins.Map() == nil {
+			return fmt.Errorf("instruction %d: %w", iter.Index, asm.ErrUnsatisfiedMapReference)
 		}
 
 		fixupProbeReadKernel(ins)
+	}
+
+	if err := fixupKfuncs(insns); err != nil {
+		return fmt.Errorf("fixing up kfuncs: %w", err)
+	}
+
+	return nil
+}
+
+// fixupKfuncs loops over all instructions in search for kfunc calls.
+// If at least one is found, the current kernels BTF is loaded to set Instruction.Constant
+// to the running kernels btf id of the btf.Func in the instructions Metadata for all kfunc call instructions.
+func fixupKfuncs(insns asm.Instructions) error {
+	iter := insns.Iterate()
+	for iter.Next() {
+		ins := iter.Ins
+		if ins.IsKfuncCall() {
+			goto fixups
+		}
+	}
+
+	return nil
+
+fixups:
+	// only load the kernel spec if we found at least one kfunc call
+	s, err := btf.LoadKernelSpec()
+	if err != nil {
+		return err
+	}
+
+	for {
+		ins := iter.Ins
+
+		if !ins.IsKfuncCall() {
+			if !iter.Next() {
+				// break loop if this was the last instruction in the stream.
+				break
+			}
+			continue
+		}
+
+		// check meta, if no meta return err
+		kfm, _ := ins.Metadata.Get(kfuncMeta{}).(*btf.Func)
+		if kfm == nil {
+			return fmt.Errorf("kfunc call has no kfuncMeta")
+		}
+
+		var fn *btf.Func
+		if err := s.TypeByName(kfm.Name, &fn); err != nil {
+			return fmt.Errorf("couldn't resolve %s in kernel spec: %v: %w", kfm.Name, err, ErrNotSupported)
+		}
+
+		if err := btf.CheckTypeCompatibility(kfm.Type, fn.Type); err != nil {
+			return err
+		}
+
+		id, err := s.TypeID(fn)
+		if err != nil {
+			return err
+		}
+
+		ins.Constant = int64(id)
+		ins.Offset = int16(0) // currently always 0, no support for kmods
+
+		if !iter.Next() {
+			break
+		}
 	}
 
 	return nil
@@ -217,28 +280,62 @@ func fixupProbeReadKernel(ins *asm.Instruction) {
 	}
 }
 
-var kernelBTF struct {
-	sync.Mutex
-	spec *btf.Spec
-}
-
-// maybeLoadKernelBTF loads the current kernel's BTF if spec is nil, otherwise
-// it returns spec unchanged.
+// resolveKconfigReferences creates and populates a .kconfig map if necessary.
 //
-// The kernel BTF is cached for the lifetime of the process.
-func maybeLoadKernelBTF(spec *btf.Spec) (*btf.Spec, error) {
-	if spec != nil {
-		return spec, nil
+// Returns a nil Map and no error if no references exist.
+func resolveKconfigReferences(insns asm.Instructions) (_ *Map, err error) {
+	closeOnError := func(c io.Closer) {
+		if err != nil {
+			c.Close()
+		}
 	}
 
-	kernelBTF.Lock()
-	defer kernelBTF.Unlock()
-
-	if kernelBTF.spec != nil {
-		return kernelBTF.spec, nil
+	var spec *MapSpec
+	iter := insns.Iterate()
+	for iter.Next() {
+		meta, _ := iter.Ins.Metadata.Get(kconfigMetaKey{}).(*kconfigMeta)
+		if meta != nil {
+			spec = meta.Map
+			break
+		}
 	}
 
-	var err error
-	kernelBTF.spec, err = btf.LoadKernelSpec()
-	return kernelBTF.spec, err
+	if spec == nil {
+		return nil, nil
+	}
+
+	cpy := spec.Copy()
+	if err := resolveKconfig(cpy); err != nil {
+		return nil, err
+	}
+
+	kconfig, err := NewMap(cpy)
+	if err != nil {
+		return nil, err
+	}
+	defer closeOnError(kconfig)
+
+	// Resolve all instructions which load from .kconfig map with actual map
+	// and offset inside it.
+	iter = insns.Iterate()
+	for iter.Next() {
+		meta, _ := iter.Ins.Metadata.Get(kconfigMetaKey{}).(*kconfigMeta)
+		if meta == nil {
+			continue
+		}
+
+		if meta.Map != spec {
+			return nil, fmt.Errorf("instruction %d: reference to multiple .kconfig maps is not allowed", iter.Index)
+		}
+
+		if err := iter.Ins.AssociateMap(kconfig); err != nil {
+			return nil, fmt.Errorf("instruction %d: %w", iter.Index, err)
+		}
+
+		// Encode a map read at the offset of the var in the datasec.
+		iter.Ins.Constant = int64(uint64(meta.Offset) << 32)
+		iter.Ins.Metadata.Set(kconfigMetaKey{}, nil)
+	}
+
+	return kconfig, nil
 }

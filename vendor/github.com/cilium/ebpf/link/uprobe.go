@@ -5,20 +5,18 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/internal"
 )
 
 var (
-	uprobeEventsPath = filepath.Join(tracefsPath, "uprobe_events")
-
 	uprobeRefCtrOffsetPMUPath = "/sys/bus/event_source/devices/uprobe/format/ref_ctr_offset"
 	// elixir.bootlin.com/linux/v5.15-rc7/source/kernel/events/core.c#L9799
 	uprobeRefCtrOffsetShift = 32
-	haveRefCtrOffsetPMU     = internal.FeatureTest("RefCtrOffsetPMU", "4.20", func() error {
+	haveRefCtrOffsetPMU     = internal.NewFeatureTest("RefCtrOffsetPMU", "4.20", func() error {
 		_, err := os.Stat(uprobeRefCtrOffsetPMUPath)
 		if err != nil {
 			return internal.ErrNotSupported
@@ -37,6 +35,8 @@ type Executable struct {
 	path string
 	// Parsed ELF and dynamic symbols' addresses.
 	addresses map[string]uint64
+	// Keep track of symbol table lazy load.
+	addressesOnce sync.Once
 }
 
 // UprobeOptions defines additional parameters that will be used
@@ -70,6 +70,10 @@ type UprobeOptions struct {
 	//
 	// Needs kernel 5.15+.
 	Cookie uint64
+	// Prefix used for the event name if the uprobe must be attached using tracefs.
+	// The group name will be formatted as `<prefix>_<randomstr>`.
+	// The default empty string is equivalent to "ebpf" as the prefix.
+	TraceFSPrefix string
 }
 
 // To open a new Executable, use:
@@ -82,32 +86,21 @@ func OpenExecutable(path string) (*Executable, error) {
 		return nil, fmt.Errorf("path cannot be empty")
 	}
 
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, fmt.Errorf("open file '%s': %w", path, err)
-	}
-	defer f.Close()
-
-	se, err := internal.NewSafeELFFile(f)
+	f, err := internal.OpenSafeELFFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("parse ELF file: %w", err)
 	}
+	defer f.Close()
 
-	if se.Type != elf.ET_EXEC && se.Type != elf.ET_DYN {
+	if f.Type != elf.ET_EXEC && f.Type != elf.ET_DYN {
 		// ELF is not an executable or a shared object.
 		return nil, errors.New("the given file is not an executable or a shared object")
 	}
 
-	ex := Executable{
+	return &Executable{
 		path:      path,
 		addresses: make(map[string]uint64),
-	}
-
-	if err := ex.load(se); err != nil {
-		return nil, err
-	}
-
-	return &ex, nil
+	}, nil
 }
 
 func (ex *Executable) load(f *internal.SafeELFFile) error {
@@ -162,6 +155,22 @@ func (ex *Executable) load(f *internal.SafeELFFile) error {
 func (ex *Executable) address(symbol string, opts *UprobeOptions) (uint64, error) {
 	if opts.Address > 0 {
 		return opts.Address + opts.Offset, nil
+	}
+
+	var err error
+	ex.addressesOnce.Do(func() {
+		var f *internal.SafeELFFile
+		f, err = internal.OpenSafeELFFile(ex.path)
+		if err != nil {
+			err = fmt.Errorf("parse ELF file: %w", err)
+			return
+		}
+		defer f.Close()
+
+		err = ex.load(f)
+	})
+	if err != nil {
+		return 0, fmt.Errorf("lazy load symbols: %w", err)
 	}
 
 	address, ok := ex.addresses[symbol]
@@ -289,6 +298,7 @@ func (ex *Executable) uprobe(symbol string, prog *ebpf.Program, opts *UprobeOpti
 		refCtrOffset: opts.RefCtrOffset,
 		ret:          ret,
 		cookie:       opts.Cookie,
+		group:        opts.TraceFSPrefix,
 	}
 
 	// Use uprobe PMU if the kernel has it available.
@@ -323,26 +333,23 @@ func tracefsUprobe(args probeArgs) (*perfEvent, error) {
 // sanitizeSymbol replaces every invalid character for the tracefs api with an underscore.
 // It is equivalent to calling regexp.MustCompile("[^a-zA-Z0-9]+").ReplaceAllString("_").
 func sanitizeSymbol(s string) string {
-	var b strings.Builder
-	b.Grow(len(s))
 	var skip bool
-	for _, c := range []byte(s) {
+	return strings.Map(func(c rune) rune {
 		switch {
 		case c >= 'a' && c <= 'z',
 			c >= 'A' && c <= 'Z',
 			c >= '0' && c <= '9':
 			skip = false
-			b.WriteByte(c)
+			return c
+
+		case skip:
+			return -1
 
 		default:
-			if !skip {
-				b.WriteByte('_')
-				skip = true
-			}
+			skip = true
+			return '_'
 		}
-	}
-
-	return b.String()
+	}, s)
 }
 
 // uprobeToken creates the PATH:OFFSET(REF_CTR_OFFSET) token for the tracefs api.

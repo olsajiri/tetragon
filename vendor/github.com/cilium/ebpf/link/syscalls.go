@@ -24,9 +24,10 @@ const (
 	XDPType           = sys.BPF_LINK_TYPE_XDP
 	PerfEventType     = sys.BPF_LINK_TYPE_PERF_EVENT
 	KprobeMultiType   = sys.BPF_LINK_TYPE_KPROBE_MULTI
+	UprobeMultiType   = sys.BPF_LINK_TYPE_UPROBE_MULTI
 )
 
-var haveProgAttach = internal.FeatureTest("BPF_PROG_ATTACH", "4.10", func() error {
+var haveProgAttach = internal.NewFeatureTest("BPF_PROG_ATTACH", "4.10", func() error {
 	prog, err := ebpf.NewProgram(&ebpf.ProgramSpec{
 		Type:    ebpf.CGroupSKB,
 		License: "MIT",
@@ -46,7 +47,7 @@ var haveProgAttach = internal.FeatureTest("BPF_PROG_ATTACH", "4.10", func() erro
 	return nil
 })
 
-var haveProgAttachReplace = internal.FeatureTest("BPF_PROG_ATTACH atomic replacement", "5.5", func() error {
+var haveProgAttachReplace = internal.NewFeatureTest("BPF_PROG_ATTACH atomic replacement of MULTI progs", "5.5", func() error {
 	if err := haveProgAttach(); err != nil {
 		return err
 	}
@@ -86,7 +87,7 @@ var haveProgAttachReplace = internal.FeatureTest("BPF_PROG_ATTACH atomic replace
 	return err
 })
 
-var haveBPFLink = internal.FeatureTest("bpf_link", "5.7", func() error {
+var haveBPFLink = internal.NewFeatureTest("bpf_link", "5.7", func() error {
 	attr := sys.LinkCreateAttr{
 		// This is a hopefully invalid file descriptor, which triggers EBADF.
 		TargetFd:   ^uint32(0),
@@ -94,6 +95,25 @@ var haveBPFLink = internal.FeatureTest("bpf_link", "5.7", func() error {
 		AttachType: sys.AttachType(ebpf.AttachCGroupInetIngress),
 	}
 	_, err := sys.LinkCreate(&attr)
+	if errors.Is(err, unix.EINVAL) {
+		return internal.ErrNotSupported
+	}
+	if errors.Is(err, unix.EBADF) {
+		return nil
+	}
+	return err
+})
+
+var haveProgQuery = internal.NewFeatureTest("BPF_PROG_QUERY", "4.15", func() error {
+	attr := sys.ProgQueryAttr{
+		// We rely on this being checked during the syscall.
+		// With an otherwise correct payload we expect EBADF here
+		// as an indication that the feature is present.
+		TargetFd:   ^uint32(0),
+		AttachType: sys.AttachType(ebpf.AttachCGroupInetIngress),
+	}
+
+	err := sys.ProgQuery(&attr)
 	if errors.Is(err, unix.EINVAL) {
 		return internal.ErrNotSupported
 	}

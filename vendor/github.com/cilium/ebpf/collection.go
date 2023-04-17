@@ -9,6 +9,7 @@ import (
 
 	"github.com/cilium/ebpf/asm"
 	"github.com/cilium/ebpf/btf"
+	"github.com/cilium/ebpf/internal"
 )
 
 // CollectionOptions control loading a collection into the kernel.
@@ -107,6 +108,16 @@ func (cs *CollectionSpec) RewriteMaps(maps map[string]*Map) error {
 	return nil
 }
 
+// MissingConstantsError is returned by [CollectionSpec.RewriteConstants].
+type MissingConstantsError struct {
+	// The constants missing from .rodata.
+	Constants []string
+}
+
+func (m *MissingConstantsError) Error() string {
+	return fmt.Sprintf("some constants are missing from .rodata: %s", strings.Join(m.Constants, ", "))
+}
+
 // RewriteConstants replaces the value of multiple constants.
 //
 // The constant must be defined like so in the C program:
@@ -120,7 +131,7 @@ func (cs *CollectionSpec) RewriteMaps(maps map[string]*Map) error {
 //
 // From Linux 5.5 the verifier will use constants to eliminate dead code.
 //
-// Returns an error if a constant doesn't exist.
+// Returns an error wrapping [MissingConstantsError] if a constant doesn't exist.
 func (cs *CollectionSpec) RewriteConstants(consts map[string]interface{}) error {
 	replaced := make(map[string]bool)
 
@@ -149,6 +160,10 @@ func (cs *CollectionSpec) RewriteConstants(consts map[string]interface{}) error 
 			replacement, ok := consts[vname]
 			if !ok {
 				continue
+			}
+
+			if _, ok := v.Type.(*btf.Var); !ok {
+				return fmt.Errorf("section %s: unexpected type %T for variable %s", name, v.Type, vname)
 			}
 
 			if replaced[vname] {
@@ -180,7 +195,7 @@ func (cs *CollectionSpec) RewriteConstants(consts map[string]interface{}) error 
 	}
 
 	if len(missing) != 0 {
-		return fmt.Errorf("spec is missing one or more constants: %s", strings.Join(missing, ","))
+		return fmt.Errorf("rewrite constants: %w", &MissingConstantsError{Constants: missing})
 	}
 
 	return nil
@@ -405,7 +420,7 @@ func newCollectionLoader(coll *CollectionSpec, opts *CollectionOptions) (*collec
 			return nil, fmt.Errorf("replacement map %s not found in CollectionSpec", name)
 		}
 
-		if err := spec.checkCompatibility(m); err != nil {
+		if err := spec.Compatible(m); err != nil {
 			return nil, fmt.Errorf("using replacement map %s: %w", spec.Name, err)
 		}
 	}
@@ -436,10 +451,6 @@ func (cl *collectionLoader) loadMap(mapName string) (*Map, error) {
 	mapSpec := cl.coll.Maps[mapName]
 	if mapSpec == nil {
 		return nil, fmt.Errorf("missing map %s", mapName)
-	}
-
-	if mapSpec.BTF != nil && cl.coll.Types != mapSpec.BTF {
-		return nil, fmt.Errorf("map %s: BTF doesn't match collection", mapName)
 	}
 
 	if replaceMap, ok := cl.opts.MapReplacements[mapName]; ok {
@@ -561,6 +572,40 @@ func (cl *collectionLoader) populateMaps() error {
 			return fmt.Errorf("populating map %s: %w", mapName, err)
 		}
 	}
+
+	return nil
+}
+
+// resolveKconfig resolves all variables declared in .kconfig and populates
+// m.Contents. Does nothing if the given m.Contents is non-empty.
+func resolveKconfig(m *MapSpec) error {
+	ds, ok := m.Value.(*btf.Datasec)
+	if !ok {
+		return errors.New("map value is not a Datasec")
+	}
+
+	data := make([]byte, ds.Size)
+	for _, vsi := range ds.Vars {
+		v := vsi.Type.(*btf.Var)
+
+		switch n := v.TypeName(); n {
+		case "LINUX_KERNEL_VERSION":
+			if integer, ok := v.Type.(*btf.Int); !ok || integer.Size != 4 {
+				return fmt.Errorf("variable %s must be a 32 bits integer, got %s", n, v.Type)
+			}
+
+			kv, err := internal.KernelVersion()
+			if err != nil {
+				return fmt.Errorf("getting kernel version: %w", err)
+			}
+			internal.NativeEndian.PutUint32(data[vsi.Offset:], kv.Kernel())
+
+		default:
+			return fmt.Errorf("unsupported kconfig: %s", n)
+		}
+	}
+
+	m.Contents = []MapKV{{uint32(0), data}}
 
 	return nil
 }

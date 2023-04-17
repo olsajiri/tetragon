@@ -3,139 +3,117 @@ package btf
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"math"
+	"sync"
 
 	"github.com/cilium/ebpf/internal"
 )
 
-type encoderOptions struct {
-	ByteOrder binary.ByteOrder
+type marshalOptions struct {
 	// Remove function linkage information for compatibility with <5.6 kernels.
 	StripFuncLinkage bool
 }
 
-// kernelEncoderOptions will generate BTF suitable for the current kernel.
-var kernelEncoderOptions encoderOptions
-
-func init() {
-	kernelEncoderOptions = encoderOptions{
-		ByteOrder:        internal.NativeEndian,
-		StripFuncLinkage: haveFuncLinkage() != nil,
-	}
+// kernelMarshalOptions will generate BTF suitable for the current kernel.
+var kernelMarshalOptions = &marshalOptions{
+	StripFuncLinkage: haveFuncLinkage() != nil,
 }
 
 // encoder turns Types into raw BTF.
 type encoder struct {
-	opts encoderOptions
+	marshalOptions
 
-	buf          *bytes.Buffer
-	strings      *stringTableBuilder
-	allocatedIDs map[Type]TypeID
-	nextID       TypeID
-	// Temporary storage for Add.
-	pending internal.Deque[Type]
-	// Temporary storage for deflateType.
-	raw rawType
+	byteOrder binary.ByteOrder
+	pending   internal.Deque[Type]
+	buf       *bytes.Buffer
+	strings   *stringTableBuilder
+	ids       map[Type]TypeID
+	lastID    TypeID
 }
 
-// newEncoder returns a new builder for the given byte order.
+var emptyBTFHeader = make([]byte, btfHeaderLen)
+
+var bufferPool = sync.Pool{
+	New: func() any {
+		return bytes.NewBuffer(make([]byte, btfHeaderLen+128))
+	},
+}
+
+func getBuffer() *bytes.Buffer {
+	buf := bufferPool.Get().(*bytes.Buffer)
+	buf.Reset()
+	return buf
+}
+
+func putBuffer(buf *bytes.Buffer) {
+	bufferPool.Put(buf)
+}
+
+// marshalTypes encodes a slice of types into BTF wire format.
 //
-// See [KernelEncoderOptions] to build BTF for the current system.
-func newEncoder(opts encoderOptions, strings *stringTableBuilder) *encoder {
-	enc := &encoder{
-		opts: opts,
-		buf:  bytes.NewBuffer(make([]byte, btfHeaderLen)),
-	}
-	enc.reset(strings)
-	return enc
-}
-
-// Reset internal state to be able to reuse the Encoder.
-func (e *encoder) Reset() {
-	e.reset(nil)
-}
-
-func (e *encoder) reset(strings *stringTableBuilder) {
-	if strings == nil {
-		strings = newStringTableBuilder()
-	}
-
-	e.buf.Truncate(btfHeaderLen)
-	e.strings = strings
-	e.allocatedIDs = make(map[Type]TypeID)
-	e.nextID = 1
-}
-
-// Add a Type.
+// types are guaranteed to be written in the order they are passed to this
+// function. The first type must always be Void.
 //
-// Adding the same Type multiple times is valid and will return a stable ID.
+// Doesn't support encoding split BTF since it's not possible to load
+// that into the kernel and we don't have a use case for writing BTF
+// out again.
 //
-// Calling the method has undefined behaviour if it previously returned an error.
-func (e *encoder) Add(typ Type) (TypeID, error) {
-	hasID := func(t Type) (skip bool) {
-		_, isVoid := t.(*Void)
-		_, alreadyEncoded := e.allocatedIDs[t]
-		return isVoid || alreadyEncoded
+// w should be retrieved from bufferPool. opts may be nil.
+func marshalTypes(w *bytes.Buffer, types []Type, stb *stringTableBuilder, opts *marshalOptions) error {
+	if len(types) < 1 {
+		return errors.New("types must contain at least Void")
 	}
 
-	e.pending.Reset()
+	if _, ok := types[0].(*Void); !ok {
+		return fmt.Errorf("first type is %s, not Void", types[0])
+	}
+	types = types[1:]
 
-	allocateID := func(typ Type) {
-		e.pending.Push(typ)
-		e.allocatedIDs[typ] = e.nextID
-		e.nextID++
+	if stb == nil {
+		stb = newStringTableBuilder(0)
 	}
 
-	iter := postorderTraversal(typ, hasID)
-	for iter.Next() {
-		if hasID(iter.Type) {
-			// This type is part of a cycle and we've already deflated it.
-			continue
-		}
+	e := encoder{
+		byteOrder: internal.NativeEndian,
+		buf:       w,
+		strings:   stb,
+		ids:       make(map[Type]TypeID, len(types)),
+	}
 
-		// Allocate an ID for the next type.
-		allocateID(iter.Type)
+	if opts != nil {
+		e.marshalOptions = *opts
+	}
 
-		for !e.pending.Empty() {
-			t := e.pending.Shift()
-
-			// Ensure that all direct descendants have been allocated an ID
-			// before calling deflateType.
-			walkType(t, func(child *Type) {
-				if !hasID(*child) {
-					// t refers to a type which hasn't been allocated an ID
-					// yet, which only happens for circular types.
-					allocateID(*child)
-				}
-			})
-
-			if err := e.deflateType(t); err != nil {
-				return 0, fmt.Errorf("deflate %s: %w", t, err)
-			}
+	// Ensure that passed types are marshaled in the exact order they were
+	// passed.
+	e.pending.Grow(len(types))
+	for _, typ := range types {
+		if err := e.allocateID(typ); err != nil {
+			return err
 		}
 	}
 
-	return e.allocatedIDs[typ], nil
-}
+	// Reserve space for the BTF header.
+	_, _ = e.buf.Write(emptyBTFHeader)
 
-// Encode the raw BTF blob.
-//
-// The returned slice is valid until the next call to Add.
-func (e *encoder) Encode() ([]byte, error) {
+	if err := e.deflatePending(); err != nil {
+		return err
+	}
+
 	length := e.buf.Len()
-
-	// Truncate the string table on return to allow adding more types.
-	defer e.buf.Truncate(length)
-
 	typeLen := uint32(length - btfHeaderLen)
 
 	// Reserve space for the string table.
 	stringLen := e.strings.Length()
 	e.buf.Grow(stringLen)
+	buf := e.strings.AppendEncoded(e.buf.Bytes())
 
-	buf := e.buf.Bytes()[:length+stringLen]
-	e.strings.MarshalBuffer(buf[length:])
+	// Add string table to the unread portion of the buffer, otherwise
+	// it isn't return by Bytes().
+	// The copy is optimized out since src == dst.
+	_, _ = e.buf.Write(buf[length:])
 
 	// Fill out the header, and write it out.
 	header := &btfHeader{
@@ -149,23 +127,102 @@ func (e *encoder) Encode() ([]byte, error) {
 		StringLen: uint32(stringLen),
 	}
 
-	err := binary.Write(sliceWriter(buf[:btfHeaderLen]), e.opts.ByteOrder, header)
+	err := binary.Write(sliceWriter(buf[:btfHeaderLen]), e.byteOrder, header)
 	if err != nil {
-		return nil, fmt.Errorf("can't write header: %v", err)
+		return fmt.Errorf("write header: %v", err)
 	}
 
-	return buf, nil
+	return nil
+}
+
+func (e *encoder) allocateID(typ Type) error {
+	id := e.lastID + 1
+	if id < e.lastID {
+		return errors.New("type ID overflow")
+	}
+
+	e.pending.Push(typ)
+	e.ids[typ] = id
+	e.lastID = id
+	return nil
+}
+
+// id returns the ID for the given type or panics with an error.
+func (e *encoder) id(typ Type) TypeID {
+	if _, ok := typ.(*Void); ok {
+		return 0
+	}
+
+	id, ok := e.ids[typ]
+	if !ok {
+		panic(fmt.Errorf("no ID for type %v", typ))
+	}
+
+	return id
+}
+
+func (e *encoder) deflatePending() error {
+	// Declare root outside of the loop to avoid repeated heap allocations.
+	var root Type
+	skip := func(t Type) (skip bool) {
+		if t == root {
+			// Force descending into the current root type even if it already
+			// has an ID. Otherwise we miss children of types that have their
+			// ID pre-allocated in marshalTypes.
+			return false
+		}
+
+		_, isVoid := t.(*Void)
+		_, alreadyEncoded := e.ids[t]
+		return isVoid || alreadyEncoded
+	}
+
+	for !e.pending.Empty() {
+		root = e.pending.Shift()
+
+		// Allocate IDs for all children of typ, including transitive dependencies.
+		iter := postorderTraversal(root, skip)
+		for iter.Next() {
+			if iter.Type == root {
+				// The iterator yields root at the end, do not allocate another ID.
+				break
+			}
+
+			if err := e.allocateID(iter.Type); err != nil {
+				return err
+			}
+		}
+
+		if err := e.deflateType(root); err != nil {
+			id := e.ids[root]
+			return fmt.Errorf("deflate %v with ID %d: %w", root, id, err)
+		}
+	}
+
+	return nil
 }
 
 func (e *encoder) deflateType(typ Type) (err error) {
-	raw := &e.raw
-	*raw = rawType{}
+	defer func() {
+		if r := recover(); r != nil {
+			var ok bool
+			err, ok = r.(error)
+			if !ok {
+				panic(r)
+			}
+		}
+	}()
+
+	var raw rawType
 	raw.NameOff, err = e.strings.Add(typ.TypeName())
 	if err != nil {
 		return err
 	}
 
 	switch v := typ.(type) {
+	case *Void:
+		return errors.New("Void is implicit in BTF wire format")
+
 	case *Int:
 		raw.SetKind(kindInt)
 		raw.SetSize(v.Size)
@@ -179,13 +236,13 @@ func (e *encoder) deflateType(typ Type) (err error) {
 
 	case *Pointer:
 		raw.SetKind(kindPointer)
-		raw.SetType(e.allocatedIDs[v.Target])
+		raw.SetType(e.id(v.Target))
 
 	case *Array:
 		raw.SetKind(kindArray)
 		raw.data = &btfArray{
-			e.allocatedIDs[v.Type],
-			e.allocatedIDs[v.Index],
+			e.id(v.Type),
+			e.id(v.Index),
 			v.Nelems,
 		}
 
@@ -218,36 +275,36 @@ func (e *encoder) deflateType(typ Type) (err error) {
 
 	case *Typedef:
 		raw.SetKind(kindTypedef)
-		raw.SetType(e.allocatedIDs[v.Type])
+		raw.SetType(e.id(v.Type))
 
 	case *Volatile:
 		raw.SetKind(kindVolatile)
-		raw.SetType(e.allocatedIDs[v.Type])
+		raw.SetType(e.id(v.Type))
 
 	case *Const:
 		raw.SetKind(kindConst)
-		raw.SetType(e.allocatedIDs[v.Type])
+		raw.SetType(e.id(v.Type))
 
 	case *Restrict:
 		raw.SetKind(kindRestrict)
-		raw.SetType(e.allocatedIDs[v.Type])
+		raw.SetType(e.id(v.Type))
 
 	case *Func:
 		raw.SetKind(kindFunc)
-		raw.SetType(e.allocatedIDs[v.Type])
-		if !e.opts.StripFuncLinkage {
+		raw.SetType(e.id(v.Type))
+		if !e.StripFuncLinkage {
 			raw.SetLinkage(v.Linkage)
 		}
 
 	case *FuncProto:
 		raw.SetKind(kindFuncProto)
-		raw.SetType(e.allocatedIDs[v.Return])
+		raw.SetType(e.id(v.Return))
 		raw.SetVlen(len(v.Params))
 		raw.data, err = e.deflateFuncParams(v.Params)
 
 	case *Var:
 		raw.SetKind(kindVar)
-		raw.SetType(e.allocatedIDs[v.Type])
+		raw.SetType(e.id(v.Type))
 		raw.data = btfVariable{uint32(v.Linkage)}
 
 	case *Datasec:
@@ -262,10 +319,13 @@ func (e *encoder) deflateType(typ Type) (err error) {
 
 	case *declTag:
 		raw.SetKind(kindDeclTag)
+		raw.SetType(e.id(v.Type))
 		raw.data = &btfDeclTag{uint32(v.Index)}
+		raw.NameOff, err = e.strings.Add(v.Value)
 
 	case *typeTag:
 		raw.SetKind(kindTypeTag)
+		raw.SetType(e.id(v.Type))
 		raw.NameOff, err = e.strings.Add(v.Value)
 
 	default:
@@ -276,7 +336,7 @@ func (e *encoder) deflateType(typ Type) (err error) {
 		return err
 	}
 
-	return raw.Marshal(e.buf, e.opts.ByteOrder)
+	return raw.Marshal(e.buf, e.byteOrder)
 }
 
 func (e *encoder) convertMembers(header *btfType, members []Member) ([]btfMember, error) {
@@ -297,7 +357,7 @@ func (e *encoder) convertMembers(header *btfType, members []Member) ([]btfMember
 
 		bms = append(bms, btfMember{
 			nameOff,
-			e.allocatedIDs[member.Type],
+			e.id(member.Type),
 			uint32(offset),
 		})
 	}
@@ -356,7 +416,7 @@ func (e *encoder) deflateFuncParams(params []FuncParam) ([]btfParam, error) {
 
 		bps = append(bps, btfParam{
 			nameOff,
-			e.allocatedIDs[param.Type],
+			e.id(param.Type),
 		})
 	}
 	return bps, nil
@@ -366,7 +426,7 @@ func (e *encoder) deflateVarSecinfos(vars []VarSecinfo) []btfVarSecinfo {
 	vsis := make([]btfVarSecinfo, 0, len(vars))
 	for _, v := range vars {
 		vsis = append(vsis, btfVarSecinfo{
-			e.allocatedIDs[v.Type],
+			e.id(v.Type),
 			v.Offset,
 			v.Size,
 		})
@@ -378,27 +438,36 @@ func (e *encoder) deflateVarSecinfos(vars []VarSecinfo) []btfVarSecinfo {
 //
 // The function is intended for the use of the ebpf package and may be removed
 // at any point in time.
-func MarshalMapKV(key, value Type) (_ *Handle, keyID, valueID TypeID, _ error) {
-	enc := nativeEncoderPool.Get().(*encoder)
-	defer nativeEncoderPool.Put(enc)
+func MarshalMapKV(key, value Type) (_ *Handle, keyID, valueID TypeID, err error) {
+	spec := NewSpec()
 
-	enc.Reset()
-
-	keyID, err := enc.Add(key)
-	if err != nil {
-		return nil, 0, 0, err
+	if key != nil {
+		keyID, err = spec.Add(key)
+		if err != nil {
+			return nil, 0, 0, fmt.Errorf("add key type: %w", err)
+		}
 	}
 
-	valueID, err = enc.Add(value)
-	if err != nil {
-		return nil, 0, 0, err
+	if value != nil {
+		if ds, ok := value.(*Datasec); ok {
+			if err := datasecResolveWorkaround(spec, ds); err != nil {
+				return nil, 0, 0, err
+			}
+		}
+
+		valueID, err = spec.Add(value)
+		if err != nil {
+			return nil, 0, 0, fmt.Errorf("add value type: %w", err)
+		}
 	}
 
-	btf, err := enc.Encode()
+	handle, err := NewHandle(spec)
 	if err != nil {
-		return nil, 0, 0, fmt.Errorf("marshal BTF: %w", err)
+		// Check for 'full' map BTF support, since kernels between 4.18 and 5.2
+		// already support BTF blobs for maps without Var or Datasec just fine.
+		if err := haveMapBTF(); err != nil {
+			return nil, 0, 0, err
+		}
 	}
-
-	handle, err := newHandleFromRawBTF(btf)
 	return handle, keyID, valueID, err
 }

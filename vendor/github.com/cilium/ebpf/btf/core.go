@@ -165,6 +165,14 @@ func (k coreKind) String() string {
 // Fixups are returned in the order of relos, e.g. fixup[i] is the solution
 // for relos[i].
 func CORERelocate(relos []*CORERelocation, target *Spec, bo binary.ByteOrder) ([]COREFixup, error) {
+	if target == nil {
+		var err error
+		target, _, err = kernelSpec()
+		if err != nil {
+			return nil, fmt.Errorf("load kernel spec: %w", err)
+		}
+	}
+
 	if bo != target.byteOrder {
 		return nil, fmt.Errorf("can't relocate %s against %s", bo, target.byteOrder)
 	}
@@ -229,6 +237,7 @@ func CORERelocate(relos []*CORERelocation, target *Spec, bo binary.ByteOrder) ([
 
 var errAmbiguousRelocation = errors.New("ambiguous relocation")
 var errImpossibleRelocation = errors.New("impossible relocation")
+var errIncompatibleTypes = errors.New("incompatible types")
 
 // coreCalculateFixups finds the target type that best matches all relocations.
 //
@@ -251,7 +260,7 @@ func coreCalculateFixups(relos []*CORERelocation, targetSpec *Spec, targets []Ty
 		for _, relo := range relos {
 			fixup, err := coreCalculateFixup(relo, target, targetID, bo)
 			if err != nil {
-				return nil, fmt.Errorf("target %s: %w", target, err)
+				return nil, fmt.Errorf("target %s: %s: %w", target, relo.kind, err)
 			}
 			if fixup.poison || fixup.isNonExistant() {
 				score++
@@ -320,15 +329,15 @@ func coreCalculateFixup(relo *CORERelocation, target Type, targetID TypeID, bo b
 	switch relo.kind {
 	case reloTypeIDTarget, reloTypeSize, reloTypeExists:
 		if len(relo.accessor) > 1 || relo.accessor[0] != 0 {
-			return zero, fmt.Errorf("%s: unexpected accessor %v", relo.kind, relo.accessor)
+			return zero, fmt.Errorf("unexpected accessor %v", relo.accessor)
 		}
 
 		err := coreAreTypesCompatible(local, target)
-		if errors.Is(err, errImpossibleRelocation) {
+		if errors.Is(err, errIncompatibleTypes) {
 			return poison()
 		}
 		if err != nil {
-			return zero, fmt.Errorf("relocation %s: %w", relo.kind, err)
+			return zero, err
 		}
 
 		switch relo.kind {
@@ -358,7 +367,7 @@ func coreCalculateFixup(relo *CORERelocation, target Type, targetID TypeID, bo b
 			return poison()
 		}
 		if err != nil {
-			return zero, fmt.Errorf("relocation %s: %w", relo.kind, err)
+			return zero, err
 		}
 
 		switch relo.kind {
@@ -395,7 +404,7 @@ func coreCalculateFixup(relo *CORERelocation, target Type, targetID TypeID, bo b
 			return poison()
 		}
 		if err != nil {
-			return zero, fmt.Errorf("target %s: %w", target, err)
+			return zero, err
 		}
 
 		maybeSkipValidation := func(f COREFixup, err error) (COREFixup, error) {
@@ -451,7 +460,7 @@ func coreCalculateFixup(relo *CORERelocation, target Type, targetID TypeID, bo b
 		}
 	}
 
-	return zero, fmt.Errorf("relocation %s: %w", relo.kind, ErrNotSupported)
+	return zero, ErrNotSupported
 }
 
 /* coreAccessor contains a path through a struct. It contains at least one index.
@@ -552,6 +561,10 @@ type coreField struct {
 }
 
 func (cf *coreField) adjustOffsetToNthElement(n int) error {
+	if n == 0 {
+		return nil
+	}
+
 	size, err := Sizeof(cf.Type)
 	if err != nil {
 		return err
@@ -608,6 +621,10 @@ func coreFindField(localT Type, localAcc coreAccessor, targetT Type) (coreField,
 	local := coreField{Type: localT}
 	target := coreField{Type: targetT}
 
+	if err := coreAreMembersCompatible(local.Type, target.Type); err != nil {
+		return coreField{}, coreField{}, fmt.Errorf("fields: %w", err)
+	}
+
 	// The first index is used to offset a pointer of the base type like
 	// when accessing an array.
 	if err := local.adjustOffsetToNthElement(localAcc[0]); err != nil {
@@ -616,10 +633,6 @@ func coreFindField(localT Type, localAcc coreAccessor, targetT Type) (coreField,
 
 	if err := target.adjustOffsetToNthElement(localAcc[0]); err != nil {
 		return coreField{}, coreField{}, err
-	}
-
-	if err := coreAreMembersCompatible(local.Type, target.Type); err != nil {
-		return coreField{}, coreField{}, fmt.Errorf("fields: %w", err)
 	}
 
 	var localMaybeFlex, targetMaybeFlex bool
@@ -825,6 +838,16 @@ func coreFindEnumValue(local Type, localAcc coreAccessor, target Type) (localVal
 	return nil, nil, errImpossibleRelocation
 }
 
+// CheckTypeCompatibility checks local and target types for Compatibility according to CO-RE rules.
+//
+// Only layout compatibility is checked, ignoring names of the root type.
+func CheckTypeCompatibility(localType Type, targetType Type) error {
+	l := Copy(localType, UnderlyingType)
+	t := Copy(targetType, UnderlyingType)
+
+	return coreAreTypesCompatible(l, t)
+}
+
 /* The comment below is from bpf_core_types_are_compat in libbpf.c:
  *
  * Check local and target types for compatibility. This check is used for
@@ -846,9 +869,10 @@ func coreFindEnumValue(local Type, localAcc coreAccessor, target Type) (localVal
  * These rules are not set in stone and probably will be adjusted as we get
  * more experience with using BPF CO-RE relocations.
  *
- * Returns errImpossibleRelocation if types are not compatible.
+ * Returns errIncompatibleTypes if types are not compatible.
  */
 func coreAreTypesCompatible(localType Type, targetType Type) error {
+
 	var (
 		localTs, targetTs typeDeque
 		l, t              = &localType, &targetType
@@ -864,7 +888,7 @@ func coreAreTypesCompatible(localType Type, targetType Type) error {
 		targetType = *t
 
 		if reflect.TypeOf(localType) != reflect.TypeOf(targetType) {
-			return fmt.Errorf("type mismatch: %w", errImpossibleRelocation)
+			return fmt.Errorf("type mismatch: %w", errIncompatibleTypes)
 		}
 
 		switch lv := (localType).(type) {
@@ -879,7 +903,7 @@ func coreAreTypesCompatible(localType Type, targetType Type) error {
 		case *FuncProto:
 			tv := targetType.(*FuncProto)
 			if len(lv.Params) != len(tv.Params) {
-				return fmt.Errorf("function param mismatch: %w", errImpossibleRelocation)
+				return fmt.Errorf("function param mismatch: %w", errIncompatibleTypes)
 			}
 
 			depth++

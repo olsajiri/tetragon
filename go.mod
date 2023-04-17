@@ -152,7 +152,7 @@ require (
 	go.uber.org/atomic v1.9.0 // indirect
 	go.uber.org/zap v1.23.0 // indirect
 	golang.org/x/crypto v0.3.0 // indirect
-	golang.org/x/exp v0.0.0-20221106115401-f9659909a136 // indirect
+	golang.org/x/exp v0.0.0-20230224173230-c95f2b4c22f2 // indirect
 	golang.org/x/mod v0.8.0 // indirect
 	golang.org/x/net v0.8.0 // indirect
 	golang.org/x/oauth2 v0.5.0 // indirect
@@ -196,4 +196,4 @@ replace (
 
 // Needed for now to resolve BTF issues in newer kernels. When we have 0.9.4 we can remove
 // this.
-replace github.com/cilium/ebpf => github.com/cilium/ebpf v0.9.4-0.20221026141156-bcf6c12e189d
+replace github.com/cilium/ebpf => github.com/olsajiri/ebpf v0.9.1-0.20230417105332-aeb37d588b69
