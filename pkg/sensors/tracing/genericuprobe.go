@@ -152,6 +152,50 @@ func loadSingleUprobeSensor(uprobeEntry *genericUprobe, args sensors.LoadProbeAr
 }
 
 func loadMultiUprobeSensor(ids []idtable.EntryID, args sensors.LoadProbeArgs) error {
+	load := args.Load
+	sensors.AllPrograms = append(sensors.AllPrograms, load)
+
+	bin_buf := make([]bytes.Buffer, len(ids))
+
+	data := &program.MultiUprobeAttachData{}
+	data.Attach = make(map[string]*program.MultiUprobeAttachSymbolsCookies)
+
+	for index, id := range ids {
+		uprobeEntry, err := genericUprobeTableGet(id)
+		if err != nil {
+			logger.GetLogger().WithError(err).Warnf("Failed to match id:%d", id)
+			return fmt.Errorf("Failed to match id")
+		}
+
+		binary.Write(&bin_buf[index], binary.LittleEndian, uprobeEntry.config)
+		config := &program.MapLoad{
+			Index: uint32(index),
+			Name:  "config_map",
+			Load: func(m *ebpf.Map, index uint32) error {
+				return m.Update(index, bin_buf[index].Bytes()[:], ebpf.UpdateAny)
+			},
+		}
+		load.MapLoad = append(load.MapLoad, config)
+
+		attach, ok := data.Attach[uprobeEntry.path]
+		if !ok {
+			attach = &program.MultiUprobeAttachSymbolsCookies{}
+		}
+
+		attach.Symbols = append(attach.Symbols, uprobeEntry.symbol)
+		attach.Cookies = append(attach.Cookies, uint64(index))
+
+		data.Attach[uprobeEntry.path] = attach
+	}
+
+	load.SetAttachData(data)
+
+	if err := program.LoadMultiUprobeProgram(args.BPFDir, args.MapDir, args.Load, args.Verbose); err == nil {
+		logger.GetLogger().Infof("Loaded generic kprobe sensor: %s -> %s", load.Name, load.Attach)
+	} else {
+		return err
+	}
+
 	return nil
 }
 

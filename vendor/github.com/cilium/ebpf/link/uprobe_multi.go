@@ -18,7 +18,20 @@ type UprobeMultiOptions struct {
 	Cookies       []uint64
 }
 
-func (ex *Executable) UprobeMulti(prog *ebpf.Program, opts UprobeMultiOptions) (Link, error) {
+func (ex *Executable) UprobeMulti(symbols []string, cookies []uint64, prog *ebpf.Program) (Link, error) {
+	opts := UprobeMultiOptions{}
+
+	for idx, symbol := range symbols {
+		offset, err := ex.address(symbol, &UprobeOptions{})
+		if err != nil {
+			return nil, err
+		}
+
+		opts.Paths = append(opts.Paths, ex.path)
+		opts.Offsets = append(opts.Offsets, uintptr(offset))
+		opts.Cookies = append(opts.Cookies, cookies[idx])
+	}
+
 	return uprobeMulti(prog, opts, 0)
 }
 
