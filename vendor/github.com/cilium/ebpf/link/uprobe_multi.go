@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"unsafe"
 
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/internal/sys"
@@ -30,7 +31,7 @@ func (ex *Executable) UprobeMulti(prog *ebpf.Program, opts UprobeMultiOptions) (
 //
 // Requires at least Linux 5.18.
 func (ex *Executable) UretprobeMulti(prog *ebpf.Program, opts UprobeMultiOptions) (Link, error) {
-	return uprobeMulti(prog, opts, unix.BPF_F_UPROBE_MULTI_RETURN)
+	return uprobeMulti(prog, opts, unix.BPF_F_KPROBE_MULTI_RETURN)
 }
 
 func uprobeMulti(prog *ebpf.Program, opts UprobeMultiOptions, flags uint32) (Link, error) {
@@ -43,8 +44,14 @@ func uprobeMulti(prog *ebpf.Program, opts UprobeMultiOptions, flags uint32) (Lin
 	refctrs := uint32(len(opts.RefCtrOffsets))
 	cookies := uint32(len(opts.Cookies))
 
-	if err := haveBPFLinkUprobeMulti(); err != nil {
-		return nil, err
+	if paths == 0 {
+		return nil, fmt.Errorf("Paths is required: %w", errInvalidInput)
+	}
+	if offsets == 0 && refctrs == 0 {
+		return nil, fmt.Errorf("one of Symbols or Addresses is required: %w", errInvalidInput)
+	}
+	if cookies > 0 && cookies != offsets && cookies != paths {
+		return nil, fmt.Errorf("Cookies must be exactly Offsets or RefCtrOffsets in length: %w", errInvalidInput)
 	}
 
 	attr := &sys.LinkCreateUprobeMultiAttr{
@@ -55,9 +62,9 @@ func uprobeMulti(prog *ebpf.Program, opts UprobeMultiOptions, flags uint32) (Lin
 
 	attr.Count = paths
 	attr.Paths = sys.NewStringSlicePointer(opts.Paths)
-	attr.Offsets = sys.NewStringSlicePointer(opts.Offsets)
-	attr.RefCtrOffsets = sys.NewStringSlicePointer(opts.RefCtrOffsets)
-	attr.Cookies = sys.NewStringSlicePointer(opts.Cookies)
+	attr.Offsets = sys.NewPointer(unsafe.Pointer(&opts.Offsets[0]))
+	attr.RefCtrOffsets = sys.NewPointer(unsafe.Pointer(&opts.RefCtrOffsets[0]))
+	attr.Cookies = sys.NewPointer(unsafe.Pointer(&opts.Cookies[0]))
 
 	fd, err := sys.LinkCreateUprobeMulti(attr)
 	if errors.Is(err, unix.ESRCH) {
