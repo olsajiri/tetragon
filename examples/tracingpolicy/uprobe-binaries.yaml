@@ -4,8 +4,15 @@ metadata:
   name: "uprobe"
 spec:
   uprobes:
-  - path: "/lib64/libc.so.6"
+  - path: "/usr/lib/x86_64-linux-gnu/libc.so.6"
     symbol: "malloc"
+    selectors:
+    - matchBinaries:
+      - operator: "In"
+        values:
+        - "/usr/bin/bash"
+  - path: "/usr/lib/x86_64-linux-gnu/libc.so.6"
+    symbol: "free"
     selectors:
     - matchBinaries:
       - operator: "In"
