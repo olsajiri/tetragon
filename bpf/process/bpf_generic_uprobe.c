@@ -78,11 +78,11 @@ generic_uprobe_start_process_filter(void *ctx)
 #ifdef __CAP_CHANGES_FILTER
 	msg->sel.match_cap = 0;
 #endif
+	msg->idx = get_index(ctx);
 	// setup index and function id
 	config = map_lookup_elem(&config_map, &msg->idx);
 	if (!config)
 		return 0;
-	msg->idx = 0;
 	msg->id = config->func_id;
 	if (!generic_process_filter_binary(config))
 		return 0;
@@ -91,7 +91,13 @@ generic_uprobe_start_process_filter(void *ctx)
 	return 0;
 }
 
-__attribute__((section(("uprobe/generic_uprobe")), used)) int
+#ifdef __MULTI_KPROBE
+#define MAIN "uprobe.multi/generic_uprobe"
+#else
+#define MAIN "uprobe/generic_uprobe"
+#endif
+
+__attribute__((section((MAIN)), used)) int
 generic_uprobe_event(struct pt_regs *ctx)
 {
 	return generic_uprobe_start_process_filter(ctx);

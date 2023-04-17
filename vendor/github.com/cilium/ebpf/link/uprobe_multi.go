@@ -76,8 +76,12 @@ func uprobeMulti(prog *ebpf.Program, opts UprobeMultiOptions, flags uint32) (Lin
 	attr.Count = paths
 	attr.Paths = sys.NewStringSlicePointer(opts.Paths)
 	attr.Offsets = sys.NewPointer(unsafe.Pointer(&opts.Offsets[0]))
-	attr.RefCtrOffsets = sys.NewPointer(unsafe.Pointer(&opts.RefCtrOffsets[0]))
-	attr.Cookies = sys.NewPointer(unsafe.Pointer(&opts.Cookies[0]))
+	if refctrs > 0 {
+		attr.RefCtrOffsets = sys.NewPointer(unsafe.Pointer(&opts.RefCtrOffsets[0]))
+	}
+	if cookies > 0 {
+		attr.Cookies = sys.NewPointer(unsafe.Pointer(&opts.Cookies[0]))
+	}
 
 	fd, err := sys.LinkCreateUprobeMulti(attr)
 	if errors.Is(err, unix.ESRCH) {
