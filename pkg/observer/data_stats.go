@@ -1,4 +1,4 @@
-package tracing
+package observer
 
 import (
 	"github.com/cilium/tetragon/pkg/metrics/consts"
@@ -12,25 +12,28 @@ var (
 		Name:        consts.MetricNamePrefix + "data_event_stats",
 		Help:        "Data event statistics. For internal use only.",
 		ConstLabels: nil,
-	}, []string{"event", "location"})
+	}, []string{"event"})
 )
 
-type EventType int
+type DataEventType int
 
 const (
-	EventReceived EventType = iota
-	EventMatched
-	EventNotMatched
+	DataEventReceived DataEventType = iota
+	DataEventAdded
+	DataEventAppended
+	DataEventMatched
+	DataEventNotMatched
 )
 
-var EventTypeStrings = map[EventType]string{
-	EventReceived:   "EventReceived",
-	EventMatched:    "EventMatched",
-	EventNotMatched: "EventNotMatched",
+var DataEventTypeStrings = map[DataEventType]string{
+	DataEventReceived:   "Received",
+	DataEventAdded:      "Added",
+	DataEventAppended:   "Appended",
+	DataEventMatched:    "Matched",
+	DataEventNotMatched: "NotMatched",
 }
 
 // Increment a data event metric for an event type and location
-func DataEventMetricInc(event EventType, location string) {
-	DataEventStats.WithLabelValues(EventTypeStrings[event], location).Inc()
+func DataEventMetricInc(event DataEventType) {
+	DataEventStats.WithLabelValues(DataEventTypeStrings[event]).Inc()
 }
-
