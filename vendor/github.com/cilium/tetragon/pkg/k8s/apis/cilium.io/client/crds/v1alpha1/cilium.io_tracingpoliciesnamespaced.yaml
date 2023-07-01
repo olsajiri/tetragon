@@ -35,6 +35,23 @@ spec:
           spec:
             description: Tracing policy specification.
             properties:
+              killers:
+                description: A killer spec.
+                items:
+                  properties:
+                    name:
+                      description: Name of the killer
+                      type: string
+                    syscalls:
+                      description: syscalls to kill
+                      items:
+                        type: string
+                      type: array
+                  required:
+                  - name
+                  - syscalls
+                  type: object
+                type: array
               kprobes:
                 description: A list of kprobe specs.
                 items:

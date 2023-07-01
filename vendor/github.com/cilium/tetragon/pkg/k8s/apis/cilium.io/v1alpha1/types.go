@@ -85,6 +85,9 @@ type TracingPolicySpec struct {
 	// +kubebuilder:validation:Optional
 	// A list of uprobe specs.
 	UProbes []UProbeSpec `json:"uprobes"`
+	// +kubebuilder:validation:Optional
+	// A killer spec.
+	Killers []KillerSpec `json:"killers"`
 
 	// +kubebuilder:validation:Optional
 	// PodSelector selects pods that this policy applies to
@@ -329,4 +332,11 @@ type UProbeSpec struct {
 	// +kubebuilder:validation:Optional
 	// Selectors to apply before producing trace output. Selectors are ORed.
 	Selectors []KProbeSelector `json:"selectors"`
+}
+
+type KillerSpec struct {
+	// Name of the killer
+	Name string `json:"name"`
+	// syscalls to kill
+	Syscalls []string `json:"syscalls"`
 }
