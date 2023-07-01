@@ -35,7 +35,8 @@ var (
 	)
 
 	/* Event Ring map */
-	TCPMonMap = program.MapBuilder("tcpmon_map", Execve)
+	TCPMonMap    = program.MapBuilder("tcpmon_map", Execve)
+	LostEventMap = program.MapBuilder("lost_event", Execve)
 	/* Networking and Process Monitoring maps */
 	ExecveMap          = program.MapBuilder("execve_map", Execve)
 	ExecveTailCallsMap = program.MapBuilderPin("execve_calls", "execve_calls", Execve)
@@ -78,6 +79,7 @@ func GetDefaultMaps() []*program.Map {
 		ExecveTailCallsMap,
 		NamesMap,
 		TCPMonMap,
+		LostEventMap,
 		TetragonConfMap,
 	}
 	return maps
