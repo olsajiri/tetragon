@@ -20,6 +20,7 @@
 #include "../string_maps.h"
 #include "common.h"
 #include "process/data_event.h"
+#include "process/bpf_killer.h"
 
 /* Type IDs form API with user space generickprobe.go */
 enum {
@@ -87,6 +88,7 @@ enum {
 	ACTION_SIGNAL = 9,
 	ACTION_TRACKSOCK = 10,
 	ACTION_UNTRACKSOCK = 11,
+	ACTION_NOTIFY_KILLER = 12,
 };
 
 enum {
@@ -1959,6 +1961,16 @@ update_pid_tid_from_sock(struct msg_generic_kprobe *e, __u64 sockaddr)
 }
 #endif
 
+#ifdef GENERIC_TRACEPOINT
+static inline __attribute__((always_inline)) void
+do_action_notify_killer(int error, int signal)
+{
+	do_killer_action(error, signal);
+}
+#else
+#define do_action_notify_killer(error, signal)
+#endif
+
 static inline __attribute__((always_inline)) __u32
 do_action(__u32 i, struct msg_generic_kprobe *e,
 	  struct selector_action *actions, struct bpf_map_def *override_tasks, bool *post)
@@ -2027,6 +2039,11 @@ do_action(__u32 i, struct msg_generic_kprobe *e,
 	case ACTION_UNTRACKSOCK:
 		socki = actions->act[++i];
 		err = tracksock(e, socki, action == ACTION_TRACKSOCK);
+		break;
+	case ACTION_NOTIFY_KILLER:
+		error = actions->act[++i];
+		signal = actions->act[++i];
+		do_action_notify_killer(error, signal);
 		break;
 	default:
 		break;
