@@ -27,7 +27,8 @@ func (k *MatchBinariesMappings) GetBinSelNamesMap() map[uint32]uint32 {
 }
 
 type ValueMap struct {
-	Data map[[8]byte]struct{}
+	Data     map[[8]byte]struct{}
+	IsKiller bool
 }
 
 type KernelSelectorState struct {
@@ -145,10 +146,10 @@ func ArgSelectorValue(v string) ([]byte, uint32) {
 	return b, uint32(len(b))
 }
 
-func (k *KernelSelectorState) newValueMap() (uint32, ValueMap) {
+func (k *KernelSelectorState) newValueMap() (uint32, *ValueMap) {
 	mapid := len(k.valueMaps)
 	vm := ValueMap{}
 	vm.Data = make(map[[8]byte]struct{})
 	k.valueMaps = append(k.valueMaps, vm)
-	return uint32(mapid), k.valueMaps[mapid]
+	return uint32(mapid), &k.valueMaps[mapid]
 }
