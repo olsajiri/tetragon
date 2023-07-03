@@ -4,6 +4,8 @@
 #include "vmlinux.h"
 #include "api.h"
 
+#define GENERIC_TRACEPOINT
+
 #include "hubble_msg.h"
 #include "bpf_events.h"
 #include "retprobe_map.h"
