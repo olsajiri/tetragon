@@ -212,17 +212,19 @@ const (
 	SelectorOpPrefix  = 8
 	SelectorOpPostfix = 9
 	// Map ops
-	SelectorInMap    = 10
-	SelectorNotInMap = 11
+	SelectorInMap       = 10
+	SelectorNotInMap    = 11
+	SelectorInRefMap    = 12
+	SelectorNotInRefMap = 13
 
-	SelectorOpMASK = 12
+	SelectorOpMASK = 14
 
 	// socket ops
-	SelectorOpSaddr    = 13
-	SelectorOpDaddr    = 14
-	SelectorOpSport    = 15
-	SelectorOpDport    = 16
-	SelectorOpProtocol = 17
+	SelectorOpSaddr    = 15
+	SelectorOpDaddr    = 16
+	SelectorOpSport    = 17
+	SelectorOpDport    = 18
+	SelectorOpProtocol = 19
 )
 
 func SelectorOp(op string) (uint32, error) {
@@ -247,6 +249,10 @@ func SelectorOp(op string) (uint32, error) {
 		return SelectorInMap, nil
 	case "NotInMap":
 		return SelectorNotInMap, nil
+	case "InRefMap":
+		return SelectorInRefMap, nil
+	case "NotInRefMap":
+		return SelectorNotInRefMap, nil
 	case "mask", "Mask":
 		return SelectorOpMASK, nil
 	case "saddr", "Saddr", "SAddr":
@@ -343,6 +349,22 @@ func argSelectorType(arg *v1alpha1.ArgSelector, sig []v1alpha1.KProbeArg) (uint3
 		}
 	}
 	return 0, fmt.Errorf("argFilter for unknown index")
+}
+
+func setupRefMap(k *KernelSelectorState, values []string, ty uint32) error {
+	if len(values) != 1 {
+		return fmt.Errorf("RefMap needs single value")
+	}
+	if values[0] != "ref:killer" {
+		return fmt.Errorf("RefMap supports only killer map")
+	}
+
+	mid, m := k.newValueMap()
+	// mark as the killer map, it will be filled in later
+	m.IsKiller = true
+	// write the map id into the selector
+	WriteSelectorUint32(k, mid)
+	return nil
 }
 
 func writeMatchValuesInMap(k *KernelSelectorState, values []string, ty uint32) error {
@@ -487,6 +509,11 @@ func ParseMatchArg(k *KernelSelectorState, arg *v1alpha1.ArgSelector, sig []v1al
 	}
 	WriteSelectorUint32(k, ty)
 	switch op {
+	case SelectorInRefMap:
+		err := setupRefMap(k, arg.Values, ty)
+		if err != nil {
+			return fmt.Errorf("setupRefMap error: %w", err)
+		}
 	case SelectorInMap, SelectorNotInMap:
 		err := writeMatchValuesInMap(k, arg.Values, ty)
 		if err != nil {

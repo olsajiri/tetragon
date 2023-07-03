@@ -4,6 +4,7 @@
 package tracing
 
 import (
+	"encoding/binary"
 	"fmt"
 	"path/filepath"
 
@@ -102,7 +103,23 @@ func populateArgFilterMaps(
 	outerMap *ebpf.Map,
 ) error {
 	for i, vm := range k.ValueMaps() {
-		err := populateArgFilterMap(pinPathPrefix, outerMap, uint32(i), vm.Data)
+		data := vm.Data
+
+		if vm.IsKiller {
+			values, err := KillerMapValues()
+			if err != nil {
+				return err
+			}
+
+			for _, v := range values {
+				var val [8]byte
+
+				binary.LittleEndian.PutUint64(val[:], uint64(v))
+				data[val] = struct{}{}
+			}
+		}
+
+		err := populateArgFilterMap(pinPathPrefix, outerMap, uint32(i), data)
 		if err != nil {
 			return err
 		}
