@@ -102,7 +102,7 @@ func populateArgFilterMaps(
 	outerMap *ebpf.Map,
 ) error {
 	for i, vm := range k.ValueMaps() {
-		err := populateArgFilterMap(pinPathPrefix, outerMap, uint32(i), vm)
+		err := populateArgFilterMap(pinPathPrefix, outerMap, uint32(i), vm.Data)
 		if err != nil {
 			return err
 		}
