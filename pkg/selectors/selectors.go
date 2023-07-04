@@ -26,12 +26,16 @@ func (k *MatchBinariesMappings) GetBinSelNamesMap() map[uint32]uint32 {
 	return k.selNamesMap
 }
 
+type ValueMap struct {
+	Data map[[8]byte]struct{}
+}
+
 type KernelSelectorState struct {
 	off uint32     // offset into encoding
 	e   [4096]byte // kernel encoding of selectors
 
 	// valueMaps are used to populate value maps for InMap and NotInMap operators
-	valueMaps []map[[8]byte]struct{}
+	valueMaps []ValueMap
 
 	matchBinaries map[int]*MatchBinariesMappings // matchBinaries mappings (one per selector)
 	newBinVals    map[uint32]string              // these should be added in the names_map
@@ -86,7 +90,7 @@ func (k *KernelSelectorState) Buffer() [4096]byte {
 	return k.e
 }
 
-func (k *KernelSelectorState) ValueMaps() []map[[8]byte]struct{} {
+func (k *KernelSelectorState) ValueMaps() []ValueMap {
 	return k.valueMaps
 }
 
@@ -141,8 +145,10 @@ func ArgSelectorValue(v string) ([]byte, uint32) {
 	return b, uint32(len(b))
 }
 
-func (k *KernelSelectorState) newValueMap() (uint32, map[[8]byte]struct{}) {
+func (k *KernelSelectorState) newValueMap() (uint32, ValueMap) {
 	mapid := len(k.valueMaps)
-	k.valueMaps = append(k.valueMaps, map[[8]byte]struct{}{})
+	vm := ValueMap{}
+	vm.Data = make(map[[8]byte]struct{})
+	k.valueMaps = append(k.valueMaps, vm)
 	return uint32(mapid), k.valueMaps[mapid]
 }

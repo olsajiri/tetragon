@@ -362,7 +362,7 @@ func writeMatchValuesInMap(k *KernelSelectorState, values []string, ty uint32) e
 		default:
 			return fmt.Errorf("Unknown type: %d", ty)
 		}
-		m[val] = struct{}{}
+		m.Data[val] = struct{}{}
 
 	}
 	// write the map id into the selector
