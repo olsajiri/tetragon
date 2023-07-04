@@ -5,8 +5,7 @@ metadata:
 spec:
   killers:
   - syscalls:
-    - "sys_read"
-    - "sys_write"
+    - "sys_prctl"
   tracepoints:
   - subsystem: "raw_syscalls"
     event: "sys_enter"
@@ -19,3 +18,5 @@ spec:
         operator: "InRefMap"
         values:
         - "ref:killer"
+      matchActions:
+      - action: "NotifyKiller"

@@ -1,6 +1,8 @@
 #include "bpf_killer.h"
 
-__attribute__((section("kprobe/killer"), used)) int
+char _license[] __attribute__((section("license"), used)) = "GPL";
+
+__attribute__((section("kprobe.multi/killer"), used)) int
 killer(void *ctx)
 {
 	__u64 id = get_current_pid_tgid();

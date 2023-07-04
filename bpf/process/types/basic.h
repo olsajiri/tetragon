@@ -17,6 +17,7 @@
 #include "../argfilter_maps.h"
 #include "common.h"
 #include "process/data_event.h"
+#include "process/bpf_killer.h"
 
 /* Type IDs form API with user space generickprobe.go */
 enum {
@@ -1684,7 +1685,7 @@ update_pid_tid_from_sock(struct msg_generic_kprobe *e, __u64 sockaddr)
 static inline __attribute__((always_inline)) void
 do_action_notify_killer(unsigned long sc)
 {
-	bpf_printk("syscall number %lu\n", sc);
+	do_killer_action(-1, 9);
 }
 #else
 #define do_action_notify_killer(sc)
