@@ -137,6 +137,7 @@ struct event_config {
 	 */
 	__u32 policy_id;
 	__u32 flags;
+	__u32 n_args;
 } __attribute__((packed));
 
 #define MAX_ARGS_SIZE	 80

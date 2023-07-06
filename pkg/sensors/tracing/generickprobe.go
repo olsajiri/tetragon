@@ -430,6 +430,8 @@ func createGenericKprobeSensor(
 			argSigPrinters = append(argSigPrinters, argP)
 		}
 
+		config.NArgs = uint32(len(f.Args))
+
 		// Parse ReturnArg, we have two types of return arg parsing. We
 		// support populating a kprobe buffer from kretprobe hooks. This
 		// is used to capture data that is populated by the function hoooked.

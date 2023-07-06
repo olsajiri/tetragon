@@ -474,6 +474,8 @@ func (tp *genericTracepoint) EventConfig() (api.EventConfig, error) {
 		config.Flags |= flagsEarlyFilter
 	}
 
+	config.NArgs = uint32(len(tp.args))
+
 	return config, nil
 }
 

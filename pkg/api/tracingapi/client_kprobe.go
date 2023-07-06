@@ -403,4 +403,5 @@ type EventConfig struct {
 	ArgReturnAction int32                      `align:"argreturnaction"`
 	PolicyID        uint32                     `align:"policy_id"`
 	Flags           uint32                     `align:"flags"`
+	NArgs           uint32                     `align:"n_args"`
 }
