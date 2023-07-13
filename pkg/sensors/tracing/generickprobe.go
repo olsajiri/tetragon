@@ -290,9 +290,13 @@ func preValidateKprobes(name string, kprobes []v1alpha1.KProbeSpec) error {
 	for i := range kprobes {
 		f := &kprobes[i]
 
-		hasOverride := selectors.HasOverride(f)
-		if hasOverride && !bpf.HasOverrideHelper() {
-			return fmt.Errorf("Error override action not supported, bpf_override_return helper not available")
+		if selectors.HasOverride(f) {
+			if !bpf.HasOverrideHelper() {
+				return fmt.Errorf("Error override action not supported, bpf_override_return helper not available")
+			}
+			if !f.Syscall {
+				return fmt.Errorf("Error override action can be used only with syscalls")
+			}
 		}
 
 		// modifying f.Call directly since BTF validation
@@ -306,8 +310,6 @@ func preValidateKprobes(name string, kprobes []v1alpha1.KProbeSpec) error {
 			} else {
 				f.Call = prefixedName
 			}
-		} else if hasOverride {
-			return fmt.Errorf("Error override action can be used only with syscalls")
 		}
 
 		// Now go over BTF validation
