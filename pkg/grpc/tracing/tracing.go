@@ -491,6 +491,7 @@ type MsgGenericUprobeUnix struct {
 	Path       string
 	Symbol     string
 	PolicyName string
+	Args       []tracingapi.MsgGenericKprobeArg
 }
 
 func (msg *MsgGenericUprobeUnix) Notify() bool {
@@ -533,11 +534,31 @@ func GetProcessUprobe(event *MsgGenericUprobeUnix) *tetragon.ProcessUprobe {
 		tetragonParent = parent.UnsafeGetProcess()
 	}
 
+	var tetragonArgs []*tetragon.KprobeArgument
+	for _, arg := range event.Args {
+		a := &tetragon.KprobeArgument{}
+		switch e := arg.(type) {
+		case api.MsgGenericKprobeArgInt:
+			a.Arg = &tetragon.KprobeArgument_IntArg{IntArg: e.Value}
+			a.Label = e.Label
+		case api.MsgGenericKprobeArgUInt:
+			a.Arg = &tetragon.KprobeArgument_UintArg{UintArg: e.Value}
+			a.Label = e.Label
+		case api.MsgGenericKprobeArgSize:
+			a.Arg = &tetragon.KprobeArgument_SizeArg{SizeArg: e.Value}
+			a.Label = e.Label
+		default:
+			logger.GetLogger().WithField("arg", e).Warnf("unexpected type: %T", e)
+		}
+		tetragonArgs = append(tetragonArgs, a)
+	}
+
 	tetragonEvent := &tetragon.ProcessUprobe{
 		Process: tetragonProcess,
 		Parent:  tetragonParent,
 		Path:    event.Path,
 		Symbol:  event.Symbol,
+		Args:    tetragonArgs,
 	}
 
 	if ec := eventcache.Get(); ec != nil &&

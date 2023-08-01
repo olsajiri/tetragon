@@ -14,6 +14,7 @@ import (
 	"github.com/cilium/ebpf"
 	"github.com/cilium/tetragon/pkg/api/ops"
 	api "github.com/cilium/tetragon/pkg/api/tracingapi"
+	gt "github.com/cilium/tetragon/pkg/generictypes"
 	"github.com/cilium/tetragon/pkg/grpc/tracing"
 	"github.com/cilium/tetragon/pkg/idtable"
 	"github.com/cilium/tetragon/pkg/k8s/apis/cilium.io/v1alpha1"
@@ -45,7 +46,8 @@ type genericUprobe struct {
 	symbol        string
 	selectors     *selectors.KernelSelectorState
 	// policyName is the name of the policy that this uprobe belongs to
-	policyName string
+	policyName     string
+	argSigPrinters []argPrinters
 }
 
 func (g *genericUprobe) SetID(id idtable.EntryID) {
@@ -91,6 +93,23 @@ func handleGenericUprobe(r *bytes.Reader) ([]observer.Event, error) {
 	unix.Tid = m.Tid
 	unix.Path = uprobeEntry.path
 	unix.Symbol = uprobeEntry.symbol
+
+	for _, a := range uprobeEntry.argSigPrinters {
+		switch a.ty {
+		case gt.GenericIntType, gt.GenericS32Type:
+			var output int32
+			var arg api.MsgGenericKprobeArgInt
+
+			err := binary.Read(r, binary.LittleEndian, &output)
+			if err != nil {
+				logger.GetLogger().WithError(err).Warnf("Int type error")
+			}
+
+			arg.Index = uint64(a.index)
+			arg.Value = output
+			unix.Args = append(unix.Args, arg)
+		}
+	}
 
 	return []observer.Event{unix}, err
 }
@@ -190,28 +209,50 @@ func createGenericUprobeSensor(
 	}
 
 	for i := range uprobes {
+		var argSigPrinters []argPrinters
+		var argsBTFSet [api.EventConfigMaxArgs]bool
+
 		spec := &uprobes[i]
 		config := &api.EventConfig{}
 
-		var args []v1alpha1.KProbeArg
+		// Parse Arguments
+		for j, a := range spec.Args {
+			argType := gt.GenericTypeFromString(a.Type)
+			if argType == gt.GenericInvalidType {
+				return nil, fmt.Errorf("Arg(%d) type '%s' unsupported", j, a.Type)
+			}
+			argP := argPrinters{index: j, ty: argType}
+			argSigPrinters = append(argSigPrinters, argP)
+			config.Arg[a.Index] = int32(argType)
+			argsBTFSet[a.Index] = true
+		}
+
+		// Mark remaining arguments as 'nops' the kernel side will skip
+		// copying 'nop' args.
+		for j, a := range argsBTFSet {
+			if a == false {
+				config.Arg[j] = gt.GenericNopType
+			}
+		}
 
 		if err := isValidUprobeSelectors(spec.Selectors); err != nil {
 			return nil, err
 		}
 
 		// Parse Filters into kernel filter logic
-		uprobeSelectorState, err := selectors.InitKernelSelectorState(spec.Selectors, args, nil)
+		uprobeSelectorState, err := selectors.InitKernelSelectorState(spec.Selectors, spec.Args, nil)
 		if err != nil {
 			return nil, err
 		}
 
 		uprobeEntry := &genericUprobe{
-			tableId:    idtable.UninitializedEntryID,
-			config:     config,
-			path:       spec.Path,
-			symbol:     spec.Symbol,
-			selectors:  uprobeSelectorState,
-			policyName: policyName,
+			tableId:        idtable.UninitializedEntryID,
+			config:         config,
+			path:           spec.Path,
+			symbol:         spec.Symbol,
+			selectors:      uprobeSelectorState,
+			policyName:     policyName,
+			argSigPrinters: argSigPrinters,
 		}
 
 		uprobeTable.AddEntry(uprobeEntry)
