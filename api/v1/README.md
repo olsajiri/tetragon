@@ -752,6 +752,7 @@ loader sensor event triggered for loaded binary/library
 | parent | [Process](#tetragon-Process) |  |  |
 | path | [string](#string) |  |  |
 | symbol | [string](#string) |  |  |
+| args | [KprobeArgument](#tetragon-KprobeArgument) | repeated |  |
 
 
 

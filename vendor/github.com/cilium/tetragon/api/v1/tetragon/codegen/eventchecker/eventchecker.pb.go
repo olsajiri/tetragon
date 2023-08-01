@@ -1099,6 +1099,7 @@ type ProcessUprobeChecker struct {
 	Parent      *ProcessChecker              `json:"parent,omitempty"`
 	Path        *stringmatcher.StringMatcher `json:"path,omitempty"`
 	Symbol      *stringmatcher.StringMatcher `json:"symbol,omitempty"`
+	Args        *KprobeArgumentListMatcher   `json:"args,omitempty"`
 }
 
 // CheckEvent checks a single event and implements the EventChecker interface
@@ -1160,6 +1161,11 @@ func (checker *ProcessUprobeChecker) Check(event *tetragon.ProcessUprobe) error 
 				return fmt.Errorf("Symbol check failed: %w", err)
 			}
 		}
+		if checker.Args != nil {
+			if err := checker.Args.Check(event.Args); err != nil {
+				return fmt.Errorf("Args check failed: %w", err)
+			}
+		}
 		return nil
 	}
 	if err := fieldChecks(); err != nil {
@@ -1192,6 +1198,12 @@ func (checker *ProcessUprobeChecker) WithSymbol(check *stringmatcher.StringMatch
 	return checker
 }
 
+// WithArgs adds a Args check to the ProcessUprobeChecker
+func (checker *ProcessUprobeChecker) WithArgs(check *KprobeArgumentListMatcher) *ProcessUprobeChecker {
+	checker.Args = check
+	return checker
+}
+
 //FromProcessUprobe populates the ProcessUprobeChecker using data from a ProcessUprobe event
 func (checker *ProcessUprobeChecker) FromProcessUprobe(event *tetragon.ProcessUprobe) *ProcessUprobeChecker {
 	if event == nil {
@@ -1205,6 +1217,19 @@ func (checker *ProcessUprobeChecker) FromProcessUprobe(event *tetragon.ProcessUp
 	}
 	checker.Path = stringmatcher.Full(event.Path)
 	checker.Symbol = stringmatcher.Full(event.Symbol)
+	{
+		var checks []*KprobeArgumentChecker
+		for _, check := range event.Args {
+			var convertedCheck *KprobeArgumentChecker
+			if check != nil {
+				convertedCheck = NewKprobeArgumentChecker().FromKprobeArgument(check)
+			}
+			checks = append(checks, convertedCheck)
+		}
+		lm := NewKprobeArgumentListMatcher().WithOperator(listmatcher.Ordered).
+			WithValues(checks...)
+		checker.Args = lm
+	}
 	return checker
 }
 

@@ -394,6 +394,7 @@ message ProcessUprobe {
     Process parent = 2;
     string path = 3;
     string symbol = 4;
+    repeated KprobeArgument args = 5;
 }
 
 message Test {
