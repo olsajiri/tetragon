@@ -4,6 +4,7 @@
 package observer
 
 import (
+	"fmt"
 	"path/filepath"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/cilium/tetragon/pkg/metrics/mapmetrics"
 	"github.com/cilium/tetragon/pkg/option"
 	"github.com/cilium/tetragon/pkg/sensors"
+	"github.com/cilium/tetragon/pkg/sensors/program"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -96,15 +98,33 @@ func updateLostMetric() {
 	}
 }
 
+func updateProgMetric(prog *program.Program) {
+	if prog.Link == nil {
+		return
+	}
+
+	info, err := prog.Link.Info()
+	if err != nil {
+		fmt.Printf("failed to get link info: %w", err)
+		return
+	}
+
+	fd := info.PerfFd()
+	fmt.Printf("KRAVA %v fd %d\n", *prog, fd)
+}
+
 func (k *Observer) startUpdateMapMetrics() {
 	update := func() {
 		for _, m := range sensors.AllMaps {
 			updateMapMetric(m.Name)
 		}
+		for _, p := range sensors.AllPrograms {
+			updateProgMetric(p)
+		}
 		updateLostMetric()
 	}
 
-	ticker := time.NewTicker(30 * time.Second)
+	ticker := time.NewTicker(5 * time.Second)
 	go func() {
 		for {
 			select {
