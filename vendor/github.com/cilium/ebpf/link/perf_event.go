@@ -84,6 +84,10 @@ type perfEventLink struct {
 	pe *perfEvent
 }
 
+type perfEventLinkExtra struct {
+	fd *sys.FD
+}
+
 func (pl *perfEventLink) isLink() {}
 
 // Pinning requires the underlying perf event FD to stay open.
@@ -120,6 +124,24 @@ func (pl *perfEventLink) Update(prog *ebpf.Program) error {
 	return fmt.Errorf("perf event link update: %w", ErrNotSupported)
 }
 
+func (pl *perfEventLink) Info() (*Info, error) {
+	var info sys.LinkInfo
+
+	if err := sys.ObjInfo(pl.fd, &info); err != nil {
+		return nil, fmt.Errorf("link info: %s", err)
+	}
+
+	var extra interface{}
+
+	return &Info{
+		info.Type,
+		info.Id,
+		ebpf.ProgramID(info.ProgId),
+		extra,
+		pl.pe.fd.Int(),
+	}, nil
+}
+
 // perfEventIoctl implements Link and handles the perf event lifecycle
 // via ioctl().
 type perfEventIoctl struct {
@@ -151,7 +173,13 @@ func (pi *perfEventIoctl) Unpin() error {
 }
 
 func (pi *perfEventIoctl) Info() (*Info, error) {
-	return nil, fmt.Errorf("perf event ioctl info: %w", ErrNotSupported)
+	return &Info{
+		0,
+		0,
+		0,
+		nil,
+		pi.fd.Int(),
+	}, nil
 }
 
 // attach the given eBPF prog to the perf event stored in pe.
