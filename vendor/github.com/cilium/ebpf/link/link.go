@@ -126,6 +126,7 @@ type Info struct {
 	ID      ID
 	Program ebpf.ProgramID
 	extra   interface{}
+	extra2  interface{}
 }
 
 type TracingInfo sys.TracingLinkInfo
@@ -162,6 +163,11 @@ func (r Info) NetNs() *NetNsInfo {
 // Returns nil if the type-specific link info isn't available.
 func (r Info) XDP() *XDPInfo {
 	e, _ := r.extra.(*XDPInfo)
+	return e
+}
+
+func (r Info) PerfFd() int {
+	e, _ := r.extra2.(int)
 	return e
 }
 
@@ -332,5 +338,6 @@ func (l *RawLink) Info() (*Info, error) {
 		info.Id,
 		ebpf.ProgramID(info.ProgId),
 		extra,
+		nil,
 	}, nil
 }
