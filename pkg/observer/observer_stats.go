@@ -112,7 +112,7 @@ func (k *Observer) startUpdateMapMetrics() {
 		updateLostMetric()
 	}
 
-	ticker := time.NewTicker(30 * time.Second)
+	ticker := time.NewTicker(2 * time.Second)
 	go func() {
 		for {
 			select {
