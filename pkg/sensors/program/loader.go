@@ -150,6 +150,9 @@ func kprobeAttach(load *Program, prog *ebpf.Program, spec *ebpf.ProgramSpec) (un
 	if err != nil {
 		return nil, fmt.Errorf("attaching '%s' failed: %w", spec.Name, err)
 	}
+
+	load.link = lnk
+
 	return &unloader.RelinkUnloader{
 		UnloadProg: unloader.PinUnloader{Prog: prog}.Unload,
 		IsLinked:   true,
