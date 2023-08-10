@@ -101,6 +101,14 @@ func (k *Observer) startUpdateMapMetrics() {
 		for _, m := range sensors.AllMaps {
 			updateMapMetric(m.Name)
 		}
+		for _, p := range sensors.AllPrograms {
+			if err := p.ProcessStats(); err != nil {
+				k.log.Debug("Failed to get stats for '%s': %v", p.Name, err)
+			}
+		}
+		for _, p := range sensors.AllPrograms {
+			p.CleanupStats()
+		}
 		updateLostMetric()
 	}
 

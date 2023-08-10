@@ -31,6 +31,7 @@ func Builder(
 		MaxEntriesMap:      make(map[string]uint32),
 		MaxEntriesInnerMap: make(map[string]uint32),
 		link:               nil,
+		stats:              nil,
 	}
 }
 
@@ -53,6 +54,11 @@ type MultiKprobeAttachData struct {
 type UprobeAttachData struct {
 	Path   string
 	Symbol string
+}
+
+type Stats interface {
+	Process(link link.Link) error
+	Cleanup()
 }
 
 // Program reprents a BPF program.
@@ -104,6 +110,8 @@ type Program struct {
 	MaxEntriesInnerMap map[string]uint32
 
 	link link.Link
+
+	stats Stats
 }
 
 func (p *Program) SetRetProbe(ret bool) *Program {
@@ -152,4 +160,22 @@ func (p *Program) Relink() error {
 		return fmt.Errorf("Relink failed: unloader type %T of program %p does not support it", p.unloader, p)
 	}
 	return rl.Relink()
+}
+
+func (p *Program) SetStats(stats Stats) *Program {
+	p.stats = stats
+	return p
+}
+
+func (p *Program) ProcessStats() error {
+	if p.stats != nil {
+		return p.stats.Process(p.link)
+	}
+	return nil
+}
+
+func (p *Program) CleanupStats() {
+	if p.stats != nil {
+		p.stats.Cleanup()
+	}
 }
