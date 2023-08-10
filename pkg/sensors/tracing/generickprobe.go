@@ -39,6 +39,7 @@ import (
 	"github.com/cilium/tetragon/pkg/sensors"
 	"github.com/cilium/tetragon/pkg/sensors/base"
 	"github.com/cilium/tetragon/pkg/sensors/program"
+	"github.com/cilium/tetragon/pkg/sensors/stats"
 	"github.com/cilium/tetragon/pkg/strutils"
 	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/sirupsen/logrus"
@@ -592,7 +593,8 @@ func createGenericKprobeSensor(
 			"kprobe/generic_kprobe",
 			pinProg,
 			"generic_kprobe").
-			SetLoaderData(kprobeEntry.tableId)
+			SetLoaderData(kprobeEntry.tableId).
+			SetStats(stats.Kprobe{funcName})
 		load.Override = kprobeEntry.hasOverride
 		progs = append(progs, load)
 

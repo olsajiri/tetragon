@@ -7,6 +7,7 @@ import (
 	"github.com/cilium/tetragon/pkg/kernels"
 	"github.com/cilium/tetragon/pkg/sensors"
 	"github.com/cilium/tetragon/pkg/sensors/program"
+	"github.com/cilium/tetragon/pkg/sensors/stats"
 )
 
 var (
@@ -24,7 +25,7 @@ var (
 		"kprobe/do_task_dead",
 		"event_exit",
 		"kprobe",
-	)
+	).SetStats(stats.Kprobe{"do_task_dead"})
 
 	Fork = program.Builder(
 		"bpf_fork.o",
@@ -32,7 +33,7 @@ var (
 		"kprobe/wake_up_new_task",
 		"kprobe_pid_clear",
 		"kprobe",
-	)
+	).SetStats(stats.Kprobe{"wake_up_new_task"})
 
 	/* Event Ring map */
 	TCPMonMap    = program.MapBuilder("tcpmon_map", Execve)
