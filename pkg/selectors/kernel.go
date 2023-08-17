@@ -14,6 +14,7 @@ import (
 	"github.com/cilium/tetragon/pkg/idtable"
 	"github.com/cilium/tetragon/pkg/k8s/apis/cilium.io/v1alpha1"
 	"github.com/cilium/tetragon/pkg/kernels"
+	"github.com/cilium/tetragon/pkg/list"
 	"github.com/cilium/tetragon/pkg/reader/namespace"
 	"github.com/cilium/tetragon/pkg/reader/network"
 )
@@ -411,6 +412,30 @@ func argSelectorType(arg *v1alpha1.ArgSelector, sig []v1alpha1.KProbeArg) (uint3
 	return 0, fmt.Errorf("argFilter for unknown index")
 }
 
+func findList(lists []v1alpha1.ListSpec, name string) (*v1alpha1.ListSpec, error) {
+	for idx := range lists {
+		l := lists[idx]
+		if l.Name == name {
+			return &l, nil
+		}
+	}
+	return nil, nil
+}
+
+func getListValues(k *KernelSelectorState, name string, ty uint32, op uint32) error {
+	l, err := findList(*k.lists, name)
+	if err != nil {
+		return err
+	}
+	values, err := list.GetListMapValues(l)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("%v", values)
+	return nil
+}
+
 func writeMatchRangesInMap(k *KernelSelectorState, values []string, ty uint32, op uint32) error {
 	mid, m := k.newValueMap()
 	for _, v := range values {
@@ -423,6 +448,14 @@ func writeMatchRangesInMap(k *KernelSelectorState, values []string, ty uint32, o
 		// for similar reasons.
 		var uRangeVal [2]uint64
 		var sRangeVal [2]int64
+
+		if strings.HasPrefix(v, "list:") {
+			if err := getListValues(k, v[len("list:"):], ty, op); err != nil {
+				return err
+			}
+			continue
+		}
+
 		rangeStr := strings.Split(v, ":")
 		if len(rangeStr) > 2 {
 			return fmt.Errorf("MatchArgs value %s invalid: range should be 'min:max'", v)

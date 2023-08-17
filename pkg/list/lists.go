@@ -11,6 +11,7 @@ import (
 	"github.com/cilium/tetragon/pkg/btf"
 	"github.com/cilium/tetragon/pkg/ftrace"
 	"github.com/cilium/tetragon/pkg/k8s/apis/cilium.io/v1alpha1"
+	"github.com/cilium/tetragon/pkg/syscallinfo"
 )
 
 func HasList(name string, lists []v1alpha1.ListSpec) bool {
@@ -91,4 +92,17 @@ func PreValidateList(list *v1alpha1.ListSpec) (err error) {
 	}
 
 	return nil
+}
+
+func GetListMapValues(list *v1alpha1.ListSpec) ([]int, error) {
+	var values []int
+
+	if !IsSyscallListType(list.Type) {
+		return nil, fmt.Errorf("Error can't get map values for list type %s", list.Type)
+	}
+	for idx := range list.Values {
+		id := syscallinfo.GetSyscallID(list.Values[idx])
+		values = append(values, id)
+	}
+	return values, nil
 }
