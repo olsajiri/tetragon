@@ -468,7 +468,7 @@ func (tp *genericTracepoint) InitKernelSelectors() error {
 		}
 	}
 
-	selectors, err := selectors.InitKernelSelectorState(selSelectors, selArgs, &tp.actionArgs)
+	selectors, err := selectors.InitKernelSelectorState(selSelectors, selArgs, nil, &tp.actionArgs)
 	if err != nil {
 		return err
 	}

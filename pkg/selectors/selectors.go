@@ -6,6 +6,8 @@ package selectors
 import (
 	"encoding/binary"
 	"sync"
+
+	"github.com/cilium/tetragon/pkg/k8s/apis/cilium.io/v1alpha1"
 )
 
 // as we use a single names_map for all kprobes, so we have to use
@@ -43,12 +45,15 @@ type KernelSelectorState struct {
 
 	matchBinaries map[int]*MatchBinariesMappings // matchBinaries mappings (one per selector)
 	newBinVals    map[uint32]string              // these should be added in the names_map
+
+	lists *[]v1alpha1.ListSpec
 }
 
-func NewKernelSelectorState() *KernelSelectorState {
+func NewKernelSelectorState(lists *[]v1alpha1.ListSpec) *KernelSelectorState {
 	return &KernelSelectorState{
 		matchBinaries: make(map[int]*MatchBinariesMappings),
 		newBinVals:    make(map[uint32]string),
+		lists:         lists,
 	}
 }
 
