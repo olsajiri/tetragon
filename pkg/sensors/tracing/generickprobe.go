@@ -29,6 +29,7 @@ import (
 	"github.com/cilium/tetragon/pkg/idtable"
 	"github.com/cilium/tetragon/pkg/k8s/apis/cilium.io/v1alpha1"
 	"github.com/cilium/tetragon/pkg/kernels"
+	"github.com/cilium/tetragon/pkg/list"
 	"github.com/cilium/tetragon/pkg/logger"
 	"github.com/cilium/tetragon/pkg/metrics/kprobemetrics"
 	"github.com/cilium/tetragon/pkg/observer"
@@ -305,9 +306,9 @@ func preValidateKprobes(name string, kprobes []v1alpha1.KProbeSpec, lists []v1al
 
 	// validate lists first
 	for i := range lists {
-		list := &lists[i]
+		l := &lists[i]
 
-		err := preValidateList(list)
+		err := list.PreValidateList(l)
 		if err != nil {
 			return err
 		}
@@ -328,7 +329,7 @@ func preValidateKprobes(name string, kprobes []v1alpha1.KProbeSpec, lists []v1al
 		if strings.HasPrefix(f.Call, "list:") {
 			listName := f.Call[len("list:"):]
 
-			if !hasList(listName, lists) {
+			if !list.HasList(listName, lists) {
 				return fmt.Errorf("Error list '%s' not found", listName)
 			}
 
@@ -412,9 +413,9 @@ func getKprobeSymbols(symbol string, syscall bool, lists []v1alpha1.ListSpec) ([
 	if strings.HasPrefix(symbol, "list:") {
 		name := symbol[len("list:"):]
 		for idx := range lists {
-			list := lists[idx]
-			if list.Name == name {
-				return list.Values, isSyscallListType(list.Type), nil
+			l := lists[idx]
+			if l.Name == name {
+				return l.Values, list.IsSyscallListType(l.Type), nil
 			}
 		}
 		return []string{""}, false, fmt.Errorf("list '%s' not found", name)

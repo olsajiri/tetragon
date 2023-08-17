@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright Authors of Tetragon
 
-package tracing
+package list
 
 import (
 	"fmt"
@@ -13,7 +13,7 @@ import (
 	"github.com/cilium/tetragon/pkg/k8s/apis/cilium.io/v1alpha1"
 )
 
-func hasList(name string, lists []v1alpha1.ListSpec) bool {
+func HasList(name string, lists []v1alpha1.ListSpec) bool {
 	for idx := range lists {
 		list := lists[idx]
 		if list.Name == name {
@@ -46,12 +46,12 @@ func listTypeFromString(s string) int32 {
 	return int32(typ)
 }
 
-func isSyscallListType(typ string) bool {
+func IsSyscallListType(typ string) bool {
 	return listTypeFromString(typ) == ListTypeSyscalls ||
 		listTypeFromString(typ) == ListTypeGeneratedSyscalls
 }
 
-func preValidateList(list *v1alpha1.ListSpec) (err error) {
+func PreValidateList(list *v1alpha1.ListSpec) (err error) {
 	if listTypeFromString(list.Type) == ListTypeInvalid {
 		return fmt.Errorf("Invalid list type: %s", list.Type)
 	}
