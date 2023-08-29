@@ -94,6 +94,18 @@ func preValidateList(list *v1alpha1.ListSpec) (err error) {
 	return nil
 }
 
+func preValidateLists(lists []v1alpha1.ListSpec) (err error) {
+	for i := range lists {
+		list := &lists[i]
+
+		err := preValidateList(list)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 type listReader struct {
 	lists []v1alpha1.ListSpec
 }
