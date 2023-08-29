@@ -232,3 +232,8 @@ type ListSpec struct {
 	// Pattern for 'generated' lists.
 	Pattern *string `json:"pattern,omitempty"`
 }
+
+type KillerSpec struct {
+	// syscalls to kill
+	Syscalls []string `json:"syscalls"`
+}
