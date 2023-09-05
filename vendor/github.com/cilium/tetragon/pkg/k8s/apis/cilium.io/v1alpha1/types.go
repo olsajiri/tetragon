@@ -315,3 +315,8 @@ type PodInfoList struct {
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []PodInfo `json:"items"`
 }
+
+type KillerSpec struct {
+	// syscalls to kill
+	Syscalls []string `json:"syscalls"`
+}
