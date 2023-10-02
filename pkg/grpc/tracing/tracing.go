@@ -52,6 +52,12 @@ func kprobeAction(act uint64) tetragon.KprobeAction {
 		return tetragon.KprobeAction_KPROBE_ACTION_NOPOST
 	case tracingapi.ActionSignal:
 		return tetragon.KprobeAction_KPROBE_ACTION_SIGNAL
+	case tracingapi.ActionTrackSock:
+		return tetragon.KprobeAction_KPROBE_ACTION_TRACKSOCK
+	case tracingapi.ActionUntrackSock:
+		return tetragon.KprobeAction_KPROBE_ACTION_UNTRACKSOCK
+	case tracingapi.ActionNotifyKiller:
+		return tetragon.KprobeAction_KPROBE_ACTION_NOTIFYKILLER
 	default:
 		return tetragon.KprobeAction_KPROBE_ACTION_UNKNOWN
 	}
@@ -299,6 +305,7 @@ type MsgGenericTracepointUnix struct {
 	Event      string
 	Args       []tracingapi.MsgGenericTracepointArg
 	PolicyName string
+	Action     uint64
 }
 
 func (msg *MsgGenericTracepointUnix) Notify() bool {
@@ -369,6 +376,7 @@ func (msg *MsgGenericTracepointUnix) HandleMessage() *tetragon.GetEventsResponse
 		Subsys:  msg.Subsys,
 		Event:   msg.Event,
 		Args:    tetragonArgs,
+		Action:  kprobeAction(msg.Action),
 	}
 
 	if ec := eventcache.Get(); ec != nil &&
