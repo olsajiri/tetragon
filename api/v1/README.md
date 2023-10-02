@@ -822,6 +822,7 @@ loader sensor event triggered for loaded binary/library
 | subsys | [string](#string) |  | Subsystem of the tracepoint. |
 | event | [string](#string) |  | Event of the subsystem. |
 | args | [KprobeArgument](#tetragon-KprobeArgument) | repeated | Arguments definition of the observed tracepoint. TODO: once we implement all we want, rename KprobeArgument to GenericArgument |
+| action | [KprobeAction](#tetragon-KprobeAction) |  | Action performed when the kprobe matched. |
 
 
 

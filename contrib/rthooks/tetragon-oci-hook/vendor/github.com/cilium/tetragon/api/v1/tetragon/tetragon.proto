@@ -433,6 +433,8 @@ message ProcessTracepoint {
     // Arguments definition of the observed tracepoint.
     // TODO: once we implement all we want, rename KprobeArgument to GenericArgument
     repeated KprobeArgument args = 6;
+    // Action performed when the kprobe matched.
+    KprobeAction action = 7;
 }
 
 message ProcessUprobe {
