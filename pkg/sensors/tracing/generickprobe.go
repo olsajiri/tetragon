@@ -756,10 +756,10 @@ func addKprobe(funcName string, f *v1alpha1.KProbeSpec, in *addKprobeIn) (out *a
 	genericKprobeTable.AddEntry(&kprobeEntry)
 	tidx := kprobeEntry.tableId.ID
 	out.tableEntryIndex = tidx
-	kprobeEntry.pinPathPrefix = sensors.PathJoin(in.sensorPath, fmt.Sprintf("gkp-%d", tidx))
 	config.FuncId = uint32(tidx)
 
 	if in.useMulti {
+		kprobeEntry.pinPathPrefix = sensors.PathJoin(in.sensorPath, "multi_kprobe")
 		if setRetprobe {
 			out.multiRetIDs = append(out.multiRetIDs, kprobeEntry.tableId)
 		}
@@ -772,6 +772,7 @@ func addKprobe(funcName string, f *v1alpha1.KProbeSpec, in *addKprobeIn) (out *a
 		return out, nil
 	}
 
+	kprobeEntry.pinPathPrefix = sensors.PathJoin(in.sensorPath, fmt.Sprintf("gkp-%d", tidx))
 	pinPath := kprobeEntry.pinPathPrefix
 	pinProg := sensors.PathJoin(pinPath, fmt.Sprintf("%s_prog", kprobeEntry.funcName))
 
