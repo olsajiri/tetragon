@@ -97,6 +97,10 @@ type pendingEventKey struct {
 	ktimeEnter uint64
 }
 
+type genericKprobeMaps struct {
+	stackTraceMap *program.Map
+}
+
 // internal genericKprobe info
 type genericKprobe struct {
 	loadArgs          kprobeLoadArgs
@@ -127,6 +131,8 @@ type genericKprobe struct {
 
 	// is there override defined for the kprobe
 	hasOverride bool
+
+	gkMaps *genericKprobeMaps
 
 	// reference to a stack trace map, must be closed when unloading the kprobe,
 	// this is done in the sensor PostUnloadHook
@@ -198,7 +204,9 @@ func getMetaValue(arg *v1alpha1.KProbeArg) (int, error) {
 	return meta, nil
 }
 
-func createMultiKprobeSensor(sensorPath string, multiIDs, multiRetIDs []idtable.EntryID) ([]*program.Program, []*program.Map) {
+func createMultiKprobeSensor(sensorPath string, multiIDs, multiRetIDs []idtable.EntryID,
+	gkMaps *genericKprobeMaps) ([]*program.Program, []*program.Map) {
+
 	var progs []*program.Program
 	var maps []*program.Map
 
@@ -277,6 +285,8 @@ func createMultiKprobeSensor(sensorPath string, multiIDs, multiRetIDs []idtable.
 
 	stackTraceMap := program.MapBuilderPin("stack_trace_map", sensors.PathJoin(pinPath, "stack_trace_map"), load)
 	maps = append(maps, stackTraceMap)
+
+	gkMaps.stackTraceMap = stackTraceMap
 
 	if kernels.EnableLargeProgs() {
 		socktrack := program.MapBuilderPin("socktrack_map", sensors.PathJoin(sensorPath, "socktrack_map"), load)
@@ -463,6 +473,7 @@ type addKprobeIn struct {
 	sensorPath string
 	policyName string
 	policyID   policyfilter.PolicyID
+	gkMaps     *genericKprobeMaps
 }
 
 type addKprobeOut struct {
@@ -499,6 +510,7 @@ func createGenericKprobeSensor(
 	var maps []*program.Map
 	var multiIDs, multiRetIDs []idtable.EntryID
 	var useMulti bool
+	var gkMaps *genericKprobeMaps
 
 	// use multi kprobe only if:
 	// - it's not disabled by user
@@ -506,11 +518,16 @@ func createGenericKprobeSensor(
 	useMulti = !option.Config.DisableKprobeMulti &&
 		bpf.HasKprobeMulti()
 
+	if useMulti {
+		gkMaps = &genericKprobeMaps{}
+	}
+
 	in := addKprobeIn{
 		useMulti:   useMulti,
 		sensorPath: name,
 		policyID:   policyID,
 		policyName: policyName,
+		gkMaps:     gkMaps,
 	}
 
 	addedKprobeIndices := []int{}
@@ -541,7 +558,7 @@ func createGenericKprobeSensor(
 	}
 
 	if useMulti {
-		progs, maps = createMultiKprobeSensor(in.sensorPath, multiIDs, multiRetIDs)
+		progs, maps = createMultiKprobeSensor(in.sensorPath, multiIDs, multiRetIDs, gkMaps)
 	}
 
 	return &sensors.Sensor{
@@ -724,6 +741,14 @@ func addKprobe(funcName string, f *v1alpha1.KProbeSpec, in *addKprobeIn) (out *a
 		config.Flags |= flagsEarlyFilter
 	}
 
+	var gkMaps *genericKprobeMaps
+
+	if in.useMulti {
+		gkMaps = in.gkMaps
+	} else {
+		gkMaps = &genericKprobeMaps{}
+	}
+
 	// create a new entry on the table, and pass its id to BPF-side
 	// so that we can do the matching at event-generation time
 	kprobeEntry := genericKprobe{
@@ -740,6 +765,7 @@ func addKprobe(funcName string, f *v1alpha1.KProbeSpec, in *addKprobeIn) (out *a
 		tableId:           idtable.UninitializedEntryID,
 		policyName:        in.policyName,
 		hasOverride:       selectors.HasOverride(f),
+		gkMaps:            gkMaps,
 	}
 
 	// Parse Filters into kernel filter logic
@@ -867,6 +893,8 @@ func addKprobe(funcName string, f *v1alpha1.KProbeSpec, in *addKprobeIn) (out *a
 
 	stackTraceMap := program.MapBuilderPin("stack_trace_map", sensors.PathJoin(pinPath, "stack_trace_map"), load)
 	out.maps = append(out.maps, stackTraceMap)
+
+	gkMaps.stackTraceMap = stackTraceMap
 
 	if kernels.EnableLargeProgs() {
 		socktrack := program.MapBuilderPin("socktrack_map", sensors.PathJoin(in.sensorPath, "socktrack_map"), load)
@@ -1198,10 +1226,8 @@ func handleGenericKprobe(r *bytes.Reader) ([]observer.Event, error) {
 
 			// lazy load the map reference if needed
 			if gk.stackTraceMapRef == nil {
-				bpf.MapPrefixPath()
-				gk.stackTraceMapRef, err = ebpf.LoadPinnedMap(path.Join(bpf.MapPrefixPath(), gk.pinPathPrefix)+"-stack_trace_map", &ebpf.LoadPinOptions{
-					ReadOnly: true,
-				})
+				mapName := filepath.Join(bpf.MapPrefixPath(), gk.gkMaps.stackTraceMap.PinName)
+				gk.stackTraceMapRef, err = ebpf.LoadPinnedMap(mapName, &ebpf.LoadPinOptions{ReadOnly: true})
 				if err != nil {
 					logger.GetLogger().WithError(err).Warn("failed to load the stacktrace map")
 				}
