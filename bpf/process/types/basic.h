@@ -2159,6 +2159,47 @@ filter_read_arg(void *ctx, int index, struct bpf_map_def *heap,
 }
 
 static inline __attribute__((always_inline)) long
+filter_return_arg(void *ctx, struct bpf_map_def *heap,
+		struct bpf_map_def *filter, struct bpf_map_def *tailcalls,
+		struct bpf_map_def *config_map)
+{
+	struct msg_generic_kprobe *e;
+	int pass, zero = 0;
+	__u8 *f;
+
+	e = map_lookup_elem(heap, &zero);
+	if (!e)
+		return 0;
+
+	/* No filters and no selectors so just accepts */
+	f = map_lookup_elem(filter_map, &e->idx);
+	if (!f) {
+		return 1;
+	}
+
+	/* No selectors, accept by default */
+	if (!e->sel.active[SELECTORS_ACTIVE])
+		return 1;
+
+	if (!e->sel.active[0])
+		return 0;
+
+	pass = filter_arg(filter, e);
+	if (!pass)
+		return filter_args_reject(e->func_id);
+
+	// If pass >1 then we need to consult the selector actions
+	// otherwise pass==1 indicates using default action.
+	if (pass > 1) {
+		e->pass = pass;
+		tail_call(ctx, tailcalls, 2);
+	}
+
+	tail_call(ctx, tailcalls, 3);
+	return 1;
+}
+
+static inline __attribute__((always_inline)) long
 generic_actions(void *ctx, struct bpf_map_def *heap,
 		struct bpf_map_def *filter,
 		struct bpf_map_def *tailcalls,
