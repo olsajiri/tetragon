@@ -85,7 +85,7 @@ generic_setup_32bit_syscall(struct msg_generic_kprobe *e, u8 op)
 	case MSG_OP_GENERIC_KPROBE:
 		info = (struct thread_info *)get_current_task();
 		probe_read(&status, sizeof(status), _(&info->status));
-		e->sel.is32BitSyscall = status & TS_COMPAT;
+		e->sel.is32bitSyscall = status & TS_COMPAT;
 	default:
 		break;
 	}

@@ -1690,7 +1690,7 @@ selector_arg_offset(__u8 *f, struct msg_generic_kprobe *e, __u32 selidx,
 			pass &= filter_char_buf(filter, args, 8);
 			break;
 		case syscall64_type:
-			set32bit = e->sel.is32BitSyscall;
+			set32bit = e->sel.is32bitSyscall;
 		case s64_ty:
 		case u64_ty:
 			pass &= filter_64ty(filter, args, set32bit);
