@@ -52,6 +52,8 @@ func InitMetrics(registry *prometheus.Registry) {
 
 	// NOTES:
 	// * Consider merging ok and errors into one with status label
+
+	registry.MustRegister(NewBPFCollector())
 }
 
 func InitMetricsForDocs(registry *prometheus.Registry) {
