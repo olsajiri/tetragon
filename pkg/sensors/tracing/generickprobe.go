@@ -13,8 +13,10 @@ import (
 	"net/http"
 	"path"
 	"strings"
+	"time"
 
 	"github.com/cilium/ebpf"
+	"github.com/cilium/ebpf/link"
 	"github.com/cilium/tetragon/pkg/api/ops"
 	"github.com/cilium/tetragon/pkg/api/processapi"
 	api "github.com/cilium/tetragon/pkg/api/tracingapi"
@@ -34,8 +36,10 @@ import (
 	"github.com/cilium/tetragon/pkg/selectors"
 	"github.com/cilium/tetragon/pkg/sensors"
 	"github.com/cilium/tetragon/pkg/sensors/program"
+	"github.com/cilium/tetragon/pkg/timer"
 	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/sirupsen/logrus"
+	"golang.org/x/sys/unix"
 
 	gt "github.com/cilium/tetragon/pkg/generictypes"
 )
@@ -516,6 +520,34 @@ func getKprobeSymbols(symbol string, syscall bool, lists []v1alpha1.ListSpec) ([
 	return []string{symbol}, syscall, nil
 }
 
+func getKprobeStats(policyID policyfilter.PolicyID, policyName string, progs []*program.Program) {
+	for _, prog := range progs {
+		info, err := prog.Link.Info()
+		if err != nil {
+			continue
+		}
+
+		missed := uint64(0)
+
+		switch info.Type {
+		case link.PerfEventType:
+			pevent := info.PerfEvent()
+			switch pevent.Type {
+			case unix.BPF_PERF_EVENT_KPROBE, unix.BPF_PERF_EVENT_KRETPROBE:
+				kprobe := pevent.Kprobe()
+				missed, _ = kprobe.Missed()
+			default:
+			}
+		case link.KprobeMultiType:
+			kmulti := info.KprobeMulti()
+			missed, _ = kmulti.Missed()
+		default:
+		}
+
+		kprobemetrics.MissedStore(uint32(policyID), policyName, prog.Attach, float64(missed))
+	}
+}
+
 func createGenericKprobeSensor(
 	spec *v1alpha1.TracingPolicySpec,
 	name string,
@@ -586,10 +618,24 @@ func createGenericKprobeSensor(
 		return nil, err
 	}
 
+	statsTimer := timer.NewPeriodicTimer("generickprobe stats timer",
+		func() { getKprobeStats(policyID, policyName, progs) }, true)
+
 	return &sensors.Sensor{
 		Name:  name,
 		Progs: progs,
 		Maps:  maps,
+		PostLoadHook: func() error {
+			statsTimer.Start(2 * time.Second)
+			return nil
+		},
+		PostUnloadHook: func() error {
+			statsTimer.Stop()
+			for _, prog := range progs {
+				kprobemetrics.MissedRemove(uint32(policyID), prog.Attach)
+			}
+			return nil
+		},
 		DestroyHook: func() error {
 			var errs error
 			for _, id := range ids {
