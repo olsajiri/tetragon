@@ -13,6 +13,15 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+type MapType int
+
+const (
+	MapTypeGlobal MapType = iota
+	MapTypePolicy
+	MapTypeSensor
+	MapTypeProgram
+)
+
 // Map represents BPF maps.
 type Map struct {
 	Name      string
@@ -21,20 +30,25 @@ type Map struct {
 	Prog      *Program
 	PinState  State
 	MapHandle *ebpf.Map
+	Type      MapType
 }
 
-func mapBuilder(name, pin string, ld *Program) *Map {
-	m := &Map{name, pin, "", ld, Idle(), nil}
+func mapBuilder(name, pin string, ld *Program, ty MapType) *Map {
+	m := &Map{name, pin, "", ld, Idle(), nil, ty}
 	ld.PinMap[name] = m
 	return m
 }
 
 func MapBuilder(name string, ld *Program) *Map {
-	return mapBuilder(name, name, ld)
+	return mapBuilder(name, name, ld, MapTypeGlobal)
+}
+
+func MapBuilderType(name string, ld *Program, ty MapType) *Map {
+	return mapBuilder(name, name, ld, ty)
 }
 
 func MapBuilderPin(name, pin string, ld *Program) *Map {
-	return mapBuilder(name, pin, ld)
+	return mapBuilder(name, pin, ld, MapTypeGlobal)
 }
 
 func (m *Map) Unload() error {
