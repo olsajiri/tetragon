@@ -17,18 +17,24 @@ import (
 type Map struct {
 	Name      string
 	PinName   string
+	PinPath   string
 	Prog      *Program
 	PinState  State
 	MapHandle *ebpf.Map
 }
 
+func mapBuilder(name, pin string, ld *Program) *Map {
+	m := &Map{name, pin, "", ld, Idle(), nil}
+	ld.PinMap[name] = m
+	return m
+}
+
 func MapBuilder(name string, ld *Program) *Map {
-	return &Map{name, name, ld, Idle(), nil}
+	return mapBuilder(name, name, ld)
 }
 
 func MapBuilderPin(name, pin string, ld *Program) *Map {
-	ld.PinMap[name] = pin
-	return &Map{name, pin, ld, Idle(), nil}
+	return mapBuilder(name, pin, ld)
 }
 
 func (m *Map) Unload() error {

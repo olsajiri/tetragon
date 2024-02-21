@@ -477,9 +477,9 @@ func MultiKprobeAttach(load *Program, bpfDir string) AttachFunc {
 
 func LoadTracepointProgram(bpfDir string, load *Program, verbose int) error {
 	var ci *customInstall
-	for mName, mPath := range load.PinMap {
+	for mName, m := range load.PinMap {
 		if mName == "tp_calls" || mName == "execve_calls" {
-			ci = &customInstall{mPath, "tracepoint"}
+			ci = &customInstall{m.PinName, "tracepoint"}
 			break
 		}
 	}
@@ -499,9 +499,9 @@ func LoadRawTracepointProgram(bpfDir string, load *Program, verbose int) error {
 
 func LoadKprobeProgram(bpfDir string, load *Program, verbose int) error {
 	var ci *customInstall
-	for mName, mPath := range load.PinMap {
+	for mName, m := range load.PinMap {
 		if mName == "kprobe_calls" || mName == "retkprobe_calls" {
-			ci = &customInstall{mPath, "kprobe"}
+			ci = &customInstall{m.PinName, "kprobe"}
 			break
 		}
 	}
@@ -544,9 +544,9 @@ func LoadKprobeProgramAttachMany(bpfDir string, load *Program, syms []string, ve
 
 func LoadUprobeProgram(bpfDir string, load *Program, verbose int) error {
 	var ci *customInstall
-	for mName, mPath := range load.PinMap {
+	for mName, m := range load.PinMap {
 		if mName == "uprobe_calls" {
-			ci = &customInstall{mPath, "uprobe"}
+			ci = &customInstall{m.PinName, "uprobe"}
 			break
 		}
 	}
@@ -559,9 +559,9 @@ func LoadUprobeProgram(bpfDir string, load *Program, verbose int) error {
 
 func LoadMultiKprobeProgram(bpfDir string, load *Program, verbose int) error {
 	var ci *customInstall
-	for mName, mPath := range load.PinMap {
+	for mName, m := range load.PinMap {
 		if mName == "kprobe_calls" || mName == "retkprobe_calls" {
-			ci = &customInstall{mPath, "kprobe"}
+			ci = &customInstall{m.PinName, "kprobe"}
 			break
 		}
 	}
@@ -785,8 +785,9 @@ func doLoadProgram(
 		var m *ebpf.Map
 		var err error
 		var mapPath string
-		if pinName, ok := load.PinMap[name]; ok {
-			mapPath = filepath.Join(bpfDir, pinName)
+
+		if pm, ok := load.PinMap[name]; ok {
+			mapPath = filepath.Join(bpfDir, pm.PinPath)
 		} else {
 			mapPath = filepath.Join(bpfDir, name)
 		}
