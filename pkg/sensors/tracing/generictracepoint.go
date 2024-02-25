@@ -481,7 +481,7 @@ func createGenericTracepointSensor(
 		}
 		maps = append(maps, matchBinariesPaths)
 
-		enforcerDataMap := enforcerMap(policyName, prog0)
+		enforcerDataMap := enforcerMap(prog0)
 		maps = append(maps, enforcerDataMap)
 
 		selMatchBinariesMap := program.MapBuilderType("tg_mb_sel_opts", prog0, program.MapTypeProgram)
