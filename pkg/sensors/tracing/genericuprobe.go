@@ -292,9 +292,10 @@ func createGenericUprobeSensor(
 	}
 
 	return &sensors.Sensor{
-		Name:  name,
-		Progs: progs,
-		Maps:  maps,
+		Name:   name,
+		Progs:  progs,
+		Maps:   maps,
+		Policy: policyName,
 	}, nil
 }
 
@@ -419,9 +420,9 @@ func createMultiUprobeSensor(sensorPath string, multiIDs []idtable.EntryID) ([]*
 
 	progs = append(progs, load)
 
-	configMap := program.MapBuilderPin("config_map", sensors.PathJoin(pinPath, "config_map"), load)
-	tailCalls := program.MapBuilderPin("uprobe_calls", sensors.PathJoin(pinPath, "up_calls"), load)
-	filterMap := program.MapBuilderPin("filter_map", sensors.PathJoin(pinPath, "filter_map"), load)
+	configMap := program.MapBuilderType("config_map", load, program.MapTypeProgram)
+	tailCalls := program.MapBuilderType("uprobe_calls", load, program.MapTypeProgram)
+	filterMap := program.MapBuilderType("filter_map", load, program.MapTypeProgram)
 
 	maps = append(maps, configMap, tailCalls, filterMap)
 
@@ -474,10 +475,10 @@ func createUprobeSensorFromEntry(uprobeEntry *genericUprobe,
 
 	progs = append(progs, load)
 
-	configMap := program.MapBuilderPin("config_map", sensors.PathJoin(pinPath, "config_map"), load)
-	tailCalls := program.MapBuilderPin("uprobe_calls", sensors.PathJoin(pinPath, "up_calls"), load)
-	filterMap := program.MapBuilderPin("filter_map", sensors.PathJoin(pinPath, "filter_map"), load)
-	selMatchBinariesMap := program.MapBuilderPin("tg_mb_sel_opts", sensors.PathJoin(pinPath, "tg_mb_sel_opts"), load)
+	configMap := program.MapBuilderType("config_map", load, program.MapTypeProgram)
+	tailCalls := program.MapBuilderType("uprobe_calls", load, program.MapTypeProgram)
+	filterMap := program.MapBuilderType("filter_map", load, program.MapTypeProgram)
+	selMatchBinariesMap := program.MapBuilderType("tg_mb_sel_opts", load, program.MapTypeProgram)
 	maps = append(maps, configMap, tailCalls, filterMap, selMatchBinariesMap)
 	return progs, maps
 }
