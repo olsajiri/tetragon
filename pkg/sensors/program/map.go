@@ -25,7 +25,6 @@ const (
 // Map represents BPF maps.
 type Map struct {
 	Name      string
-	PinName   string
 	PinPath   string
 	Prog      *Program
 	PinState  State
@@ -33,26 +32,22 @@ type Map struct {
 	Type      MapType
 }
 
-func mapBuilder(name, pin string, ld *Program, ty MapType) *Map {
-	m := &Map{name, pin, "", ld, Idle(), nil, ty}
+func mapBuilder(name string, ld *Program, ty MapType) *Map {
+	m := &Map{name, "", ld, Idle(), nil, ty}
 	ld.PinMap[name] = m
 	return m
 }
 
 func MapBuilder(name string, ld *Program) *Map {
-	return mapBuilder(name, name, ld, MapTypeGlobal)
+	return mapBuilder(name, ld, MapTypeGlobal)
 }
 
 func MapBuilderType(name string, ld *Program, ty MapType) *Map {
-	return mapBuilder(name, name, ld, ty)
-}
-
-func MapBuilderPin(name, pin string, ld *Program) *Map {
-	return mapBuilder(name, pin, ld, MapTypeGlobal)
+	return mapBuilder(name, ld, ty)
 }
 
 func (m *Map) Unload() error {
-	log := logger.GetLogger().WithField("map", m.Name).WithField("pin", m.PinName)
+	log := logger.GetLogger().WithField("map", m.Name).WithField("pin", m.Name)
 	if !m.PinState.IsLoaded() {
 		log.WithField("count", m.PinState.count).Debug("Refusing to unload map as it is not loaded")
 		return nil
