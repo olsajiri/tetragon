@@ -15,6 +15,11 @@ import (
 // Code in this file is derived from libbpf, which is available under a BSD
 // 2-Clause license.
 
+// A constant used when CO-RE relocation has to remove instructions.
+//
+// Taken from libbpf.
+const COREBadRelocationSentinel = 0xbad2310
+
 // COREFixup is the result of computing a CO-RE relocation for a target.
 type COREFixup struct {
 	kind   coreKind
@@ -41,17 +46,26 @@ func (f *COREFixup) String() string {
 
 func (f *COREFixup) Apply(ins *asm.Instruction) error {
 	if f.poison {
-		const badRelo = 0xbad2310
-
 		// Relocation is poisoned, replace the instruction with an invalid one.
-
 		if ins.OpCode.IsDWordLoad() {
 			// Replace a dword load with a invalid dword load to preserve instruction size.
-			*ins = asm.LoadImm(asm.R10, badRelo, asm.DWord)
+			*ins = asm.LoadImm(asm.R10, COREBadRelocationSentinel, asm.DWord)
 		} else {
 			// Replace all single size instruction with a invalid call instruction.
-			*ins = asm.BuiltinFunc(badRelo).Call()
+			*ins = asm.BuiltinFunc(COREBadRelocationSentinel).Call()
 		}
+
+		// Add context to the kernel verifier output.
+		if source := ins.Source(); source != nil {
+			*ins = ins.WithSource(&Line{
+				line: fmt.Sprintf("instruction poisoned by CO-RE: %s", source),
+			})
+		} else {
+			*ins = ins.WithSource(&Line{
+				line: "instruction poisoned by CO-RE",
+			})
+		}
+
 		return nil
 	}
 
@@ -421,7 +435,7 @@ func coreCalculateFixup(relo *CORERelocation, target Type, targetID TypeID, bo b
 		}
 
 	case reloFieldByteOffset, reloFieldByteSize, reloFieldExists, reloFieldLShiftU64, reloFieldRShiftU64, reloFieldSigned:
-		if _, ok := as[*Fwd](target); ok {
+		if _, ok := As[*Fwd](target); ok {
 			// We can't relocate fields using a forward declaration, so
 			// skip it. If a non-forward declaration is present in the BTF
 			// we'll find it in one of the other iterations.
@@ -490,14 +504,14 @@ func coreCalculateFixup(relo *CORERelocation, target Type, targetID TypeID, bo b
 		case reloFieldSigned:
 			switch local := UnderlyingType(localField.Type).(type) {
 			case *Enum:
-				target, ok := as[*Enum](targetField.Type)
+				target, ok := As[*Enum](targetField.Type)
 				if !ok {
 					return zero, fmt.Errorf("target isn't *Enum but %T", targetField.Type)
 				}
 
 				return fixup(boolToUint64(local.Signed), boolToUint64(target.Signed))
 			case *Int:
-				target, ok := as[*Int](targetField.Type)
+				target, ok := As[*Int](targetField.Type)
 				if !ok {
 					return zero, fmt.Errorf("target isn't *Int but %T", targetField.Type)
 				}
@@ -581,7 +595,7 @@ func (ca coreAccessor) String() string {
 }
 
 func (ca coreAccessor) enumValue(t Type) (*EnumValue, error) {
-	e, ok := as[*Enum](t)
+	e, ok := As[*Enum](t)
 	if !ok {
 		return nil, fmt.Errorf("not an enum: %s", t)
 	}
@@ -707,7 +721,7 @@ func coreFindField(localT Type, localAcc coreAccessor, targetT Type) (coreField,
 
 			localMember := localMembers[acc]
 			if localMember.Name == "" {
-				localMemberType, ok := as[composite](localMember.Type)
+				localMemberType, ok := As[composite](localMember.Type)
 				if !ok {
 					return coreField{}, coreField{}, fmt.Errorf("unnamed field with type %s: %s", localMember.Type, ErrNotSupported)
 				}
@@ -721,7 +735,7 @@ func coreFindField(localT Type, localAcc coreAccessor, targetT Type) (coreField,
 				continue
 			}
 
-			targetType, ok := as[composite](target.Type)
+			targetType, ok := As[composite](target.Type)
 			if !ok {
 				return coreField{}, coreField{}, fmt.Errorf("target not composite: %w", errImpossibleRelocation)
 			}
@@ -767,7 +781,7 @@ func coreFindField(localT Type, localAcc coreAccessor, targetT Type) (coreField,
 
 		case *Array:
 			// For arrays, acc is the index in the target.
-			targetType, ok := as[*Array](target.Type)
+			targetType, ok := As[*Array](target.Type)
 			if !ok {
 				return coreField{}, coreField{}, fmt.Errorf("target not array: %w", errImpossibleRelocation)
 			}
@@ -861,7 +875,7 @@ func coreFindMember(typ composite, name string) (Member, bool, error) {
 				continue
 			}
 
-			comp, ok := as[composite](member.Type)
+			comp, ok := As[composite](member.Type)
 			if !ok {
 				return Member{}, false, fmt.Errorf("anonymous non-composite type %T not allowed", member.Type)
 			}
@@ -880,7 +894,7 @@ func coreFindEnumValue(local Type, localAcc coreAccessor, target Type) (localVal
 		return nil, nil, err
 	}
 
-	targetEnum, ok := as[*Enum](target)
+	targetEnum, ok := As[*Enum](target)
 	if !ok {
 		return nil, nil, errImpossibleRelocation
 	}
