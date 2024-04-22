@@ -3,6 +3,7 @@ package link
 import (
 	"errors"
 	"fmt"
+	"os"
 	"runtime"
 	"unsafe"
 
@@ -78,6 +79,16 @@ func (pe *perfEvent) Close() error {
 	return nil
 }
 
+type PerfEvent interface {
+	// PerfEvent returns a file for the underlying perf event.
+	//
+	// It is the callers responsibility to close the returned file.
+	//
+	// Making changes to the associated perf event lead to
+	// undefined behaviour.
+	PerfEvent() (*os.File, error)
+}
+
 // perfEventLink represents a bpf perf link.
 type perfEventLink struct {
 	RawLink
@@ -120,6 +131,17 @@ func (pl *perfEventLink) Update(prog *ebpf.Program) error {
 	return fmt.Errorf("perf event link update: %w", ErrNotSupported)
 }
 
+var _ PerfEvent = (*perfEventLink)(nil)
+
+func (pl *perfEventLink) PerfEvent() (*os.File, error) {
+	fd, err := pl.pe.fd.Dup()
+	if err != nil {
+		return nil, err
+	}
+
+	return fd.File("perf-event"), nil
+}
+
 // perfEventIoctl implements Link and handles the perf event lifecycle
 // via ioctl().
 type perfEventIoctl struct {
@@ -152,6 +174,17 @@ func (pi *perfEventIoctl) Unpin() error {
 
 func (pi *perfEventIoctl) Info() (*Info, error) {
 	return nil, fmt.Errorf("perf event ioctl info: %w", ErrNotSupported)
+}
+
+var _ PerfEvent = (*perfEventIoctl)(nil)
+
+func (pi *perfEventIoctl) PerfEvent() (*os.File, error) {
+	fd, err := pi.fd.Dup()
+	if err != nil {
+		return nil, err
+	}
+
+	return fd.File("perf-event"), nil
 }
 
 // attach the given eBPF prog to the perf event stored in pe.
