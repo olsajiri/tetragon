@@ -27,11 +27,13 @@ type Feature struct {
 }
 
 var (
-	kprobeMulti         Feature
-	uprobeMulti         Feature
-	buildid             Feature
-	modifyReturn        Feature
-	modifyReturnSyscall Feature
+	kprobeMulti            Feature
+	uprobeMulti            Feature
+	buildid                Feature
+	modifyReturn           Feature
+	modifyReturnSyscall    Feature
+	missedStatsPerfEvent   Feature
+	missedStatsKprobeMulti Feature
 )
 
 func HasOverrideHelper() bool {
@@ -216,6 +218,28 @@ func HasModifyReturnSyscall() bool {
 
 func HasProgramLargeSize() bool {
 	return features.HaveLargeInstructions() == nil
+}
+
+func detectMissedStatsKprobeMulti() bool {
+	return false
+}
+
+func HasMissedStatsKprobeMulti() bool {
+	missedStatsKprobeMulti.init.Do(func() {
+		missedStatsKprobeMulti.detected = detectMissedStatsKprobeMulti()
+	})
+	return missedStatsKprobeMulti.detected
+}
+
+func detectMissedStatsPerfEvent() bool {
+	return false
+}
+
+func HasMissedStatsPerfEvent() bool {
+	missedStatsPerfEvent.init.Do(func() {
+		missedStatsPerfEvent.detected = detectMissedStatsPerfEvent()
+	})
+	return missedStatsPerfEvent.detected
 }
 
 func LogFeatures() string {
