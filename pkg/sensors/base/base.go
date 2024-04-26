@@ -7,6 +7,7 @@ import (
 	"log"
 	"sync"
 
+	"github.com/cilium/tetragon/pkg/bpf"
 	"github.com/cilium/tetragon/pkg/kernels"
 	"github.com/cilium/tetragon/pkg/ksyms"
 	"github.com/cilium/tetragon/pkg/logger"
@@ -47,6 +48,14 @@ var (
 		"kprobe",
 	).SetPolicy("base")
 
+	KprobeStats = program.Builder(
+		"bpf_kprobe_stats.o",
+		"perf_read",
+		"kprobe/perf_read",
+		"kprobe_stats",
+		"kprobe",
+	).SetPolicy("base")
+
 	/* Event Ring map */
 	TCPMonMap = program.MapBuilder("tcpmon_map", Execve)
 	/* Networking and Process Monitoring maps */
@@ -62,6 +71,9 @@ var (
 	ExecveStats        = program.MapBuilder("execve_map_stats", Execve)
 	ExecveJoinMapStats = program.MapBuilder("tg_execve_joined_info_map_stats", ExecveBprmCommit)
 	StatsMap           = program.MapBuilder("tg_stats_map", Execve)
+
+	/* kprobe stat map */
+	KprobeStatsMap = program.MapBuilder("kprobe_stats_map", KprobeStats)
 
 	sensor = sensors.Sensor{
 		Name: "__base__",
@@ -101,12 +113,20 @@ func GetTetragonConfMap() *program.Map {
 	return TetragonConfMap
 }
 
+func needsKprobeStats() bool {
+	return !bpf.HasKprobeMulti() && !bpf.HasMissedStatsPerfEvent()
+}
+
 func GetDefaultPrograms() []*program.Program {
 	progs := []*program.Program{
 		Exit,
 		Fork,
 		Execve,
 		ExecveBprmCommit,
+	}
+
+	if needsKprobeStats() {
+		progs = append(progs, KprobeStats)
 	}
 	return progs
 }
@@ -121,6 +141,10 @@ func GetDefaultMaps() []*program.Map {
 		TCPMonMap,
 		TetragonConfMap,
 		StatsMap,
+	}
+
+	if needsKprobeStats() {
+		maps = append(maps, KprobeStatsMap)
 	}
 	return maps
 
