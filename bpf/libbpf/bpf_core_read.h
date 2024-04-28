@@ -89,6 +89,32 @@ enum bpf_type_info_kind {
 	val;								      \
 })
 
+/* Differentiator between compilers builtin implementations. This is a
+ * requirement due to the compiler parsing differences where GCC optimizes
+ * early in parsing those constructs of type pointers to the builtin specific
+ * type, resulting in not being possible to collect the required type
+ * information in the builtin expansion.
+ */
+#ifdef __clang__
+#define ___bpf_typeof(type) ((typeof(type) *) 0)
+#else
+#define ___bpf_typeof1(type, NR) ({					    \
+	extern typeof(type) *___concat(bpf_type_tmp_, NR);		    \
+	___concat(bpf_type_tmp_, NR);					    \
+})
+#define ___bpf_typeof(type) ___bpf_typeof1(type, __COUNTER__)
+#endif
+
+#ifdef __clang__
+#define ___bpf_field_ref1(field)	(field)
+#define ___bpf_field_ref2(type, field)	(___bpf_typeof(type)->field)
+#else
+#define ___bpf_field_ref1(field)	(&(field))
+#define ___bpf_field_ref2(type, field)	(&(___bpf_typeof(type)->field))
+#endif
+#define ___bpf_field_ref(args...)					    \
+	___bpf_apply(___bpf_field_ref, ___bpf_narg(args))(args)
+
 /*
  * Convenience macro to check that field actually exists in target kernel's.
  * Returns:
@@ -104,6 +130,18 @@ enum bpf_type_info_kind {
  */
 #define bpf_core_field_size(field)					    \
 	__builtin_preserve_field_info(field, BPF_FIELD_BYTE_SIZE)
+
+/*
+ * Convenience macro to get field's byte offset.
+ *
+ * Supports two forms:
+ *   - field reference through variable access:
+ *     bpf_core_field_offset(p->my_field);
+ *   - field reference through type and field names:
+ *     bpf_core_field_offset(struct my_type, my_field).
+ */
+#define bpf_core_field_offset(field...)					    \
+	__builtin_preserve_field_info(___bpf_field_ref(field), BPF_FIELD_BYTE_OFFSET)
 
 /*
  * Convenience macro to check that provided named type
