@@ -116,6 +116,7 @@ type Program struct {
 	MaxEntriesInnerMap map[string]uint32
 
 	Link link.Link
+	Prog *ebpf.Program
 }
 
 func (p *Program) SetRetProbe(ret bool) *Program {
