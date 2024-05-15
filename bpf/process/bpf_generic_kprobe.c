@@ -6,6 +6,7 @@
 
 #define GENERIC_KPROBE
 
+#include "inline.h"
 #include "bpf_event.h"
 #include "bpf_task.h"
 #include "retprobe_map.h"
@@ -69,8 +70,8 @@ struct {
 	__type(value, struct event_config);
 } config_map SEC(".maps");
 
-static inline __attribute__((always_inline)) int
-generic_kprobe_start_process_filter(void *ctx)
+FUNC_ATTR int
+generic_kprobe_start_process_filter(struct pt_regs *ctx)
 {
 	struct msg_generic_kprobe *msg;
 	struct event_config *config;

@@ -122,7 +122,7 @@ generic_process_init(struct msg_generic_kprobe *e, u8 op, struct event_config *c
 	generic_setup_32bit_syscall(e, op);
 }
 
-static inline __attribute__((always_inline)) int
+FUNC_ATTR int
 generic_process_event_and_setup(struct pt_regs *ctx,
 				struct bpf_map_def *heap_map,
 				struct bpf_map_def *tailcals,
