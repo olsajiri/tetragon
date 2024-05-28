@@ -1,0 +1,18 @@
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: "syswritefollowfdpsswd"
+spec:
+  kprobes:
+  - call: "sys_read"
+    syscall: true
+    selectors:
+    - matchBinaries:
+      - operator: "In"
+        values:
+        - "/usr/bin/ls"
+      matchActions:
+      - action: Signal
+        argSig: 10
+  - call: "group_send_sig_info"
+    syscall: false
