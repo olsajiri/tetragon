@@ -18,24 +18,18 @@ using hard links.
 apiVersion: cilium.io/v1alpha1
 kind: TracingPolicy
 metadata:
-  name: "fd-install"
+  name: "all-syscalls-for-kill"
 spec:
+  lists:
+  - name: "all-syscalls"
+    type: "generated_syscalls"
   kprobes:
-  - call: "fd_install"
-    syscall: false
-    args:
-    - index: 0
-      type: "int"
-    - index: 1
-      type: "file"
+  - call: "list:all-syscalls"
     selectors:
-    - matchArgs:
-      - index: 1
-        operator: "Equal"
+    - matchBinaries:
+      - operator: "In"
         values:
-        - "/tmp/tetragon"
-      matchActions:
-      - action: Sigkill
+        - "/usr/bin/kill"
 ```
 
 The policy checks for file descriptors being created, and sends a `SIGKILL` signal to any process that
