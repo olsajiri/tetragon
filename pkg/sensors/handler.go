@@ -5,6 +5,7 @@ package sensors
 
 import (
 	"fmt"
+	"sync"
 
 	slimv1 "github.com/cilium/cilium/pkg/k8s/slim/k8s/apis/meta/v1"
 	"github.com/cilium/tetragon/pkg/policyfilter"
@@ -18,6 +19,10 @@ type handler struct {
 	nextPolicyID uint64
 	pfState      policyfilter.State
 }
+
+var (
+	muLoad sync.Mutex
+)
 
 func newHandler(
 	pfState policyfilter.State,
@@ -34,6 +39,18 @@ func newHandler(
 		// introduce more special values in the future.
 		nextPolicyID: policyfilter.FirstValidFilterPolicyID,
 	}, nil
+}
+
+func load(col *collection, bpfDir string) error {
+	muLoad.Lock()
+	defer muLoad.Unlock()
+	return col.load(bpfDir)
+}
+
+func unload(col *collection) error {
+	muLoad.Lock()
+	defer muLoad.Unlock()
+	return col.unload()
 }
 
 func (h *handler) allocPolicyID() uint64 {
@@ -139,7 +156,7 @@ func (h *handler) addTracingPolicy(op *tracingPolicyAdd) error {
 
 	// unlock so that policyLister can access the collections (read-only) while we are loading.
 	h.collections.mu.Unlock()
-	err = col.load(h.bpfDir)
+	err = load(&col, h.bpfDir)
 	h.collections.mu.Lock()
 
 	if err != nil {
@@ -191,7 +208,7 @@ func (h *handler) disableTracingPolicy(op *tracingPolicyDisable) error {
 	col.state = UnloadingState
 	// unlock so that policyLister can access the collections (read-only) while we are unloading.
 	h.collections.mu.Unlock()
-	err := col.unload()
+	err := unload(col)
 	h.collections.mu.Lock()
 
 	if err != nil {
@@ -222,7 +239,7 @@ func (h *handler) enableTracingPolicy(op *tracingPolicyEnable) error {
 	col.state = LoadingState
 	// unlock so that policyLister can access the collections (read-only) while we are loading.
 	h.collections.mu.Unlock()
-	err := col.load(h.bpfDir)
+	err := load(col, h.bpfDir)
 	h.collections.mu.Lock()
 
 	if err != nil {
@@ -288,7 +305,6 @@ func (h *handler) removeSensor(op *sensorRemove) error {
 
 func (h *handler) enableSensor(op *sensorEnable) error {
 	h.collections.mu.Lock()
-	defer h.collections.mu.Unlock()
 	collections := h.collections.c
 	// Treat sensors as cluster-wide operations
 	ck := collectionKey{op.name, ""}
@@ -296,13 +312,12 @@ func (h *handler) enableSensor(op *sensorEnable) error {
 	if !exists {
 		return fmt.Errorf("sensor %s does not exist", ck)
 	}
-
-	return col.load(h.bpfDir)
+	h.collections.mu.Unlock()
+	return load(col, h.bpfDir)
 }
 
 func (h *handler) disableSensor(op *sensorDisable) error {
 	h.collections.mu.Lock()
-	defer h.collections.mu.Unlock()
 	collections := h.collections.c
 	// Treat sensors as cluster-wide operations
 	ck := collectionKey{op.name, ""}
@@ -310,8 +325,8 @@ func (h *handler) disableSensor(op *sensorDisable) error {
 	if !exists {
 		return fmt.Errorf("sensor %s does not exist", ck)
 	}
-
-	return col.unload()
+	h.collections.mu.Unlock()
+	return unload(col)
 }
 
 func (h *handler) listSensors(op *sensorList) error {
