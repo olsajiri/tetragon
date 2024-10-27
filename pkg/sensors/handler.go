@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	slimv1 "github.com/cilium/cilium/pkg/k8s/slim/k8s/apis/meta/v1"
+	"github.com/cilium/tetragon/api/v1/tetragon"
 	"github.com/cilium/tetragon/pkg/policyfilter"
 	"github.com/cilium/tetragon/pkg/tracingpolicy"
 )
@@ -346,6 +347,45 @@ func (h *handler) listSensors(op *sensorList) error {
 	}
 	op.result = &ret
 	return nil
+}
+
+func (h *handler) listPolicies() []*tetragon.TracingPolicyStatus {
+	h.collections.mu.RLock()
+	defer h.collections.mu.RUnlock()
+	collections := h.collections.c
+
+	ret := make([]*tetragon.TracingPolicyStatus, 0, len(collections))
+	for ck, col := range collections {
+		if col.tracingpolicy == nil {
+			continue
+		}
+
+		pol := tetragon.TracingPolicyStatus{
+			Id:       col.tracingpolicyID,
+			Name:     ck.name,
+			Enabled:  col.state == EnabledState,
+			FilterId: col.policyfilterID,
+			State:    col.state.ToTetragonState(),
+		}
+
+		if col.err != nil {
+			pol.Error = col.err.Error()
+		}
+
+		pol.Namespace = ""
+		if tpNs, ok := col.tracingpolicy.(tracingpolicy.TracingPolicyNamespaced); ok {
+			pol.Namespace = tpNs.TpNamespace()
+		}
+
+		for _, sens := range col.sensors {
+			pol.Sensors = append(pol.Sensors, sens.GetName())
+			pol.KernelMemoryBytes += uint64(sens.TotalMemlock())
+		}
+
+		ret = append(ret, &pol)
+	}
+
+	return ret
 }
 
 func sensorsFromPolicyHandlers(tp tracingpolicy.TracingPolicy, filterID policyfilter.PolicyID) ([]SensorIface, error) {
