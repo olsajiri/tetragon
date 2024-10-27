@@ -298,6 +298,3 @@ type sensorList struct {
 type sensorCtlStop struct {
 	ctx context.Context
 }
-
-type LoadArg struct{}
-type UnloadArg = LoadArg
