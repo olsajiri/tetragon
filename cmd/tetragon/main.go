@@ -189,6 +189,16 @@ func deleteOldBpfDir(path string) {
 	log.Infof("Removed bpf instance: %s", path)
 }
 
+func loadInitialSensor(ctx context.Context) error {
+	mgr := observer.GetSensorManager()
+	initialSensor := base.GetInitialSensor()
+
+	if err := mgr.AddSensor(ctx, initialSensor.Name, initialSensor); err != nil {
+		return err
+	}
+	return mgr.EnableSensor(ctx, initialSensor.Name)
+}
+
 func tetragonExecute() error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -479,14 +489,9 @@ func tetragonExecute() error {
 
 	base.ConfigCgroupRate(&option.Config.CgroupRate)
 
-	// load base sensor
-	initialSensor := base.GetInitialSensor()
-	if err := initialSensor.Load(observerDir); err != nil {
+	if err = loadInitialSensor(ctx); err != nil {
 		return err
 	}
-	defer func() {
-		initialSensor.Unload()
-	}()
 
 	cgrouprate.NewCgroupRate(ctx, pm, base.CgroupRateMap, &option.Config.CgroupRate)
 	cgrouprate.Config(base.CgroupRateOptionsMap)
