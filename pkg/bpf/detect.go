@@ -74,6 +74,10 @@ func detectKprobeMulti() bool {
 	return err == nil
 }
 
+func HasKprobeSession() bool {
+	return true
+}
+
 func HasKprobeMulti() bool {
 	kprobeMulti.init.Do(func() {
 		kprobeMulti.detected = detectKprobeMulti()

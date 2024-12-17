@@ -98,6 +98,11 @@ type pendingEventKey struct {
 	ktimeEnter uint64
 }
 
+type loaderData struct {
+	ids     []idtable.EntryID
+	session bool
+}
+
 type genericKprobeData struct {
 	// stackTraceMap reference is needed when retrieving stack traces from
 	// userspace when receiving events containing stacktrace IDs
@@ -276,6 +281,7 @@ func createMultiKprobeSensor(policyName string, multiIDs []idtable.EntryID, has 
 	var maps []*program.Map
 
 	data := &genericKprobeData{}
+	useSession := false
 
 	for _, id := range multiIDs {
 		gk, err := genericKprobeTableGet(id)
@@ -302,13 +308,20 @@ func createMultiKprobeSensor(policyName string, multiIDs []idtable.EntryID, has 
 		loadProgRetName = "bpf_multi_retkprobe_v511.o"
 	}
 
+	if bpf.HasKprobeSession() {
+		if len(multiIDs) == len(multiRetIDs) {
+			loadProgName = "bpf_session_kprobe.o"
+			useSession = true
+		}
+	}
+
 	load := program.Builder(
 		path.Join(option.Config.HubbleLib, loadProgName),
 		fmt.Sprintf("kprobe_multi (%d functions)", len(multiIDs)),
-		"kprobe.multi/generic_kprobe",
+		"kprobe.session/generic_kprobe",
 		"multi_kprobe",
 		"generic_kprobe").
-		SetLoaderData(multiIDs).
+		SetLoaderData(loaderData{ids: multiIDs, session: useSession}).
 		SetPolicy(policyName)
 	progs = append(progs, load)
 
@@ -379,7 +392,7 @@ func createMultiKprobeSensor(policyName string, multiIDs []idtable.EntryID, has 
 	}
 	maps = append(maps, overrideTasksMap)
 
-	if len(multiRetIDs) != 0 {
+	if !useSession && len(multiRetIDs) != 0 {
 		loadret := program.Builder(
 			path.Join(option.Config.HubbleLib, loadProgRetName),
 			fmt.Sprintf("%d retkprobes", len(multiIDs)),
@@ -419,6 +432,9 @@ func createMultiKprobeSensor(policyName string, multiIDs []idtable.EntryID, has 
 
 		retConfigMap.SetMaxEntries(len(multiRetIDs))
 		retFilterMap.SetMaxEntries(len(multiRetIDs))
+	} else {
+		retTailCalls := program.MapBuilderSensor("retkprobe_calls", load)
+		maps = append(maps, retTailCalls)
 	}
 
 	return progs, maps, nil
@@ -1116,10 +1132,10 @@ func loadSingleKprobeSensor(id idtable.EntryID, bpfDir string, load *program.Pro
 	return err
 }
 
-func loadMultiKprobeSensor(ids []idtable.EntryID, bpfDir string, load *program.Program, verbose int) error {
+func loadMultiKprobeSensor(ids []idtable.EntryID, session bool, bpfDir string, load *program.Program, verbose int) error {
 	bin_buf := make([]bytes.Buffer, len(ids))
 
-	data := &program.MultiKprobeAttachData{}
+	data := &program.MultiKprobeAttachData{Session: session}
 
 	for index, id := range ids {
 		gk, err := genericKprobeTableGet(id)
@@ -1164,8 +1180,8 @@ func loadGenericKprobeSensor(bpfDir string, load *program.Program, verbose int) 
 	if id, ok := load.LoaderData.(idtable.EntryID); ok {
 		return loadSingleKprobeSensor(id, bpfDir, load, verbose)
 	}
-	if ids, ok := load.LoaderData.([]idtable.EntryID); ok {
-		return loadMultiKprobeSensor(ids, bpfDir, load, verbose)
+	if data, ok := load.LoaderData.(loaderData); ok {
+		return loadMultiKprobeSensor(data.ids, data.session, bpfDir, load, verbose)
 	}
 	return fmt.Errorf("invalid loadData type: expecting idtable.EntryID/[] and got: %T (%v)",
 		load.LoaderData, load.LoaderData)
