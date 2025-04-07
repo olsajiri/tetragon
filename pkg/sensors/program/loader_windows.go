@@ -27,35 +27,6 @@ func makeGUID(data1 uint32, data2 uint16, data3 uint16, data4 [8]byte) windows.G
 	return windows.GUID{Data1: data1, Data2: data2, Data3: data3, Data4: data4}
 }
 
-func winAttachStub(_ *ebpf.Collection, _ *ebpf.CollectionSpec,
-	prog *ebpf.Program, spec *ebpf.ProgramSpec) (unloader.Unloader, error) {
-
-	return nil, notSupportedWinErr
-}
-
-func RawAttachWithFlags(targetFD int, flags uint32) AttachFunc {
-	return winAttachStub
-}
-
-func TracepointAttach(load *Program, bpfDir string) AttachFunc {
-	return winAttachStub
-}
-
-func RawTracepointAttach(load *Program) AttachFunc {
-	return winAttachStub
-}
-
-func KprobeOpen(load *Program) OpenFunc {
-	return func(coll *ebpf.CollectionSpec) error {
-		return notSupportedWinErr
-	}
-}
-
-func kprobeAttach(load *Program, prog *ebpf.Program, spec *ebpf.ProgramSpec,
-	symbol string, bpfDir string, extra ...string) (unloader.Unloader, error) {
-	return nil, notSupportedWinErr
-}
-
 func windowsAttach(load *Program, prog *ebpf.Program, spec *ebpf.ProgramSpec,
 	symbol string, bpfDir string, extra ...string) (unloader.Unloader, error) {
 
@@ -90,48 +61,6 @@ func WindowsAttach(load *Program, bpfDir string) AttachFunc {
 	}
 }
 
-func KprobeAttach(load *Program, bpfDir string) AttachFunc {
-	return func(coll *ebpf.Collection, collSpec *ebpf.CollectionSpec,
-		prog *ebpf.Program, spec *ebpf.ProgramSpec) (unloader.Unloader, error) {
-
-		return kprobeAttach(load, prog, spec, load.Attach, bpfDir)
-	}
-}
-
-func UprobeAttach(load *Program) AttachFunc {
-	return func(_ *ebpf.Collection, _ *ebpf.CollectionSpec,
-		prog *ebpf.Program, spec *ebpf.ProgramSpec) (unloader.Unloader, error) {
-		return nil, fmt.Errorf("not supported on windows")
-
-	}
-}
-
-func MultiUprobeAttach(load *Program) AttachFunc {
-	return func(_ *ebpf.Collection, _ *ebpf.CollectionSpec,
-		prog *ebpf.Program, spec *ebpf.ProgramSpec) (unloader.Unloader, error) {
-		return nil, fmt.Errorf("not supported on windows")
-
-	}
-}
-
-func TracingAttach(load *Program, bpfDir string) AttachFunc {
-	return winAttachStub
-}
-
-func LSMOpen(load *Program) OpenFunc {
-	return func(coll *ebpf.CollectionSpec) error {
-		return fmt.Errorf("not supported on windows")
-	}
-}
-
-func LSMAttach() AttachFunc {
-	return winAttachStub
-}
-
-func MultiKprobeAttach(load *Program, bpfDir string) AttachFunc {
-	return winAttachStub
-}
-
 func LoadWindowsProgram(bpfDir string, load *Program, maps []*Map, verbose int) error {
 	opts := &LoadOpts{
 		Attach: WindowsAttach(load, bpfDir),
@@ -149,10 +78,6 @@ func LoadRawTracepointProgram(bpfDir string, load *Program, maps []*Map, verbose
 
 func LoadKprobeProgram(bpfDir string, load *Program, maps []*Map, verbose int) error {
 	return constants.ErrWindowsNotSupported
-}
-
-func KprobeAttachMany(load *Program, syms []string, bpfDir string) AttachFunc {
-	return winAttachStub
 }
 
 func LoadKprobeProgramAttachMany(bpfDir string, load *Program, syms []string, maps []*Map, verbose int) error {
