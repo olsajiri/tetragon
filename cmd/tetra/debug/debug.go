@@ -20,5 +20,6 @@ func New() *cobra.Command {
 	cmd.AddCommand(NewProgsCmd())
 	cmd.AddCommand(NewEnableStatsCmd())
 	cmd.AddCommand(NewRefMapCmd())
+	cmd.AddCommand(NewCollCmd())
 	return &cmd
 }
