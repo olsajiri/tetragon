@@ -70,4 +70,14 @@ struct bpf_map_def {
 #define __arg_trusted  __attribute((btf_decl_tag("arg:trusted")))
 #define __arg_arena    __attribute((btf_decl_tag("arg:arena")))
 
+#define FILTER_SIZE 4096
+
+#define MAX_POSSIBLE_ARGS	 5
+#define MAX_POSSIBLE_SELECTORS	 31
+#define SELECTORS_ACTIVE	 31
+#define MAX_CONFIGURED_SELECTORS MAX_POSSIBLE_SELECTORS + 1
+
+/* value to mask an offsset into msg_generic_kprobe->args */
+#define GENERIC_MSG_ARGS_MASK 0x7ff
+
 #endif // _MSG_COMMON__
