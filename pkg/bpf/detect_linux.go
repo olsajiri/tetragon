@@ -49,6 +49,7 @@ var (
 	uprobeRefCtrOffset     Feature
 	auditLoginuid          Feature
 	uprobeRegsChange       Feature
+	kfuncStrnstr           Feature
 )
 
 func HasOverrideHelper() bool {
@@ -573,15 +574,37 @@ func HasUprobeRegsChange() bool {
 	return uprobeRegsChange.detected
 }
 
+func detectKfunc(name string) bool {
+	spec, err := btf.NewBTF()
+	if err != nil {
+		return false
+	}
+
+	var fn *ebtf.Func
+	if err := spec.TypeByName(name, &fn); err != nil {
+		return false
+	}
+
+	return len(fn.Tags) == 1 && fn.Tags[0] == "bpf_kfunc"
+}
+
+func HasStrnstrKfunc() bool {
+	kfuncStrnstr.init.Do(func() {
+		kfuncStrnstr.detected = detectKfunc("bpf_strnstr")
+	})
+
+	return kfuncStrnstr.detected
+}
+
 func LogFeatures() string {
 	// once we have detected all features, flush the BTF spec
 	// we cache all values so calling again a Has* function will
 	// not load the BTF again
 	defer ebtf.FlushKernelSpec()
-	return fmt.Sprintf("override_return: %t, buildid: %t, kprobe_multi: %t, uprobe_multi: %t, fmodret: %t, fmodret_syscall: %t, signal: %t, large: %t, link_pin: %t, lsm: %t, missed_stats_kprobe_multi: %t, missed_stats_kprobe: %t, batch_update: %t, uprobe_refctroff: %t, audit_loginuid: %t, probe_write_user: %t, uprobe_regs_change: %t, loop: %t",
+	return fmt.Sprintf("override_return: %t, buildid: %t, kprobe_multi: %t, uprobe_multi: %t, fmodret: %t, fmodret_syscall: %t, signal: %t, large: %t, link_pin: %t, lsm: %t, missed_stats_kprobe_multi: %t, missed_stats_kprobe: %t, batch_update: %t, uprobe_refctroff: %t, audit_loginuid: %t, probe_write_user: %t, uprobe_regs_change: %t, loop: %t, strnstr %t",
 		HasOverrideHelper(), HasBuildId(), HasKprobeMulti(), HasUprobeMulti(),
 		HasModifyReturn(), HasModifyReturnSyscall(), HasSignalHelper(), HasProgramLargeSize(),
 		HasLinkPin(), HasLSMPrograms(), HasMissedStatsKprobeMulti(), HasMissedStatsPerfEvent(),
 		HasBatchAPI(), HasUprobeRefCtrOffset(), HasAuditLoginuid(), HasProbeWriteUserHelper(),
-		HasUprobeRegsChange(), HasLoopHelper())
+		HasUprobeRegsChange(), HasLoopHelper(), HasStrnstrKfunc())
 }
