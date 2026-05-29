@@ -76,7 +76,7 @@ struct {
 __attribute__((section("raw_tp/generic_tracepoint"), used)) int
 generic_rawtp_event(void *ctx)
 {
-	return generic_start_process_filter(ctx, (struct bpf_map_def *)&tp_calls);
+	return generic_start_process_filter_tc(ctx, (struct bpf_map_def *)&tp_calls);
 }
 
 __attribute__((section("raw_tp"), used)) int

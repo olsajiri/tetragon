@@ -55,7 +55,7 @@ struct {
 __attribute__((section((MAIN)), used)) int
 generic_lsm_event(struct pt_regs *ctx)
 {
-	return generic_start_process_filter(ctx, (struct bpf_map_def *)&lsm_calls);
+	return generic_start_process_filter_tc(ctx, (struct bpf_map_def *)&lsm_calls);
 }
 
 __attribute__((section("lsm"), used)) int

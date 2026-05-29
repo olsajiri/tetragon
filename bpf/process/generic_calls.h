@@ -26,8 +26,8 @@
 
 #define MAX_TOTAL 9000
 
-FUNC_INLINE int
-generic_start_process_filter(void *ctx, struct bpf_map_def *calls)
+FUNC_LOCAL int
+generic_start_process_filter(void *ctx)
 {
 	struct msg_generic_kprobe *msg;
 	struct event_config *config;
@@ -36,15 +36,15 @@ generic_start_process_filter(void *ctx, struct bpf_map_def *calls)
 
 	msg = map_lookup_elem(&process_call_heap, &zero);
 	if (!msg)
-		return 0;
+		return -EINVAL;
 
 	/* setup index, check policy filter, and setup function id */
 	msg->idx = get_index(ctx);
 	config = map_lookup_elem(&config_map, &msg->idx);
 	if (!config)
-		return 0;
+		return -EINVAL;
 	if (!policy_filter_check(config->policy_id))
-		return 0;
+		return -EINVAL;
 	msg->func_id = config->func_id;
 	msg->retprobe_id = 0;
 
@@ -72,6 +72,15 @@ generic_start_process_filter(void *ctx, struct bpf_map_def *calls)
 
 	msg->lsm.post = false;
 	msg->common.flags = 0;
+
+	return 0;
+}
+
+FUNC_INLINE int
+generic_start_process_filter_tc(void *ctx, struct bpf_map_def *calls)
+{
+	if (generic_start_process_filter(ctx))
+		return 0;
 
 	/* Tail call into filters. */
 	tail_call(ctx, calls, TAIL_CALL_FILTER);

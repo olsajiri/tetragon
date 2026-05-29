@@ -52,7 +52,7 @@ struct {
 __attribute__((section((SECTION_ENTRY)), used)) int
 generic_fentry_event(void *ctx)
 {
-	return generic_start_process_filter(ctx, (struct bpf_map_def *)&fentry_calls);
+	return generic_start_process_filter_tc(ctx, (struct bpf_map_def *)&fentry_calls);
 }
 
 __attribute__((section(SECTION_TAIL), used)) int

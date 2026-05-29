@@ -66,7 +66,7 @@ struct {
 __attribute__((section((MAIN)), used)) int
 generic_uprobe_event(struct pt_regs *ctx)
 {
-	return generic_start_process_filter(ctx, (struct bpf_map_def *)&uprobe_calls);
+	return generic_start_process_filter_tc(ctx, (struct bpf_map_def *)&uprobe_calls);
 }
 
 __attribute__((section(COMMON), used)) int
