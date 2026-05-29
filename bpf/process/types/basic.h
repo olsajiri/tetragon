@@ -794,9 +794,6 @@ FUNC_INLINE void __copy_reverse(__u8 *dest, uint len, __u8 *src, uint offset, ui
 	uint i;
 
 	len &= STRING_POSTFIX_MAX_MASK;
-#ifndef __LARGE_BPF_PROG
-#pragma unroll
-#endif
 	// Maximum we can go to is one less than the absolute maximum.
 	// This is to allow the masking and indexing to work correctly.
 	// (Appreciate this is a bit ugly.)
@@ -807,7 +804,12 @@ FUNC_INLINE void __copy_reverse(__u8 *dest, uint len, __u8 *src, uint offset, ui
 	// reverse copy the string as if it was 127 chars long.
 	// Alternative (prettier) fixes resulted in a confused verifier
 	// unfortunately.
+#ifndef __LARGE_BPF_PROG
+#pragma unroll
 	for (i = 0; i < (STRING_POSTFIX_MAX_MATCH_LENGTH - 1); i++) {
+#else
+	bpf_for(i, 0, STRING_POSTFIX_MAX_MATCH_LENGTH -1) {
+#endif
 		dest[i & STRING_POSTFIX_MAX_MASK] = src[(len + offset - 1 - i) & mask];
 		if (len + offset == (i + 1))
 			return;
