@@ -733,8 +733,8 @@ generic_process_init(struct msg_generic_kprobe *e, u8 op)
 	e->tid = (__u32)get_current_pid_tgid();
 }
 
-FUNC_INLINE int
-generic_process_event_and_setup(struct pt_regs *ctx, struct bpf_map_def *tailcals)
+FUNC_LOCAL int
+generic_process_event_and_setup(struct pt_regs *ctx)
 {
 	struct msg_generic_kprobe *e;
 	struct event_config *config;
@@ -744,18 +744,18 @@ generic_process_event_and_setup(struct pt_regs *ctx, struct bpf_map_def *tailcal
 	/* Pid/Ktime Passed through per cpu map in process heap. */
 	e = map_lookup_elem(&process_call_heap, &zero);
 	if (!e)
-		return 0;
+		return -EINVAL;
 
 	config = map_lookup_elem(&config_map, &e->idx);
 	if (!config)
-		return 0;
+		return -EINVAL;
 
 #ifdef GENERIC_KPROBE
 	if (config->syscall) {
 		struct pt_regs *_ctx;
 		_ctx = PT_REGS_SYSCALL_REGS(ctx);
 		if (!_ctx)
-			return 0;
+			return -EINVAL;
 		e->a0 = PT_REGS_PARM1_CORE_SYSCALL(_ctx);
 		e->a1 = PT_REGS_PARM2_CORE_SYSCALL(_ctx);
 		e->a2 = PT_REGS_PARM3_CORE_SYSCALL(_ctx);
@@ -786,7 +786,7 @@ generic_process_event_and_setup(struct pt_regs *ctx, struct bpf_map_def *tailcal
 		struct pt_regs *_ctx = (struct pt_regs *)BPF_CORE_READ(raw_args, args[0]);
 
 		if (!_ctx)
-			return 0;
+			return -EINVAL;
 		e->a0 = PT_REGS_PARM1_CORE_SYSCALL(_ctx);
 		e->a1 = PT_REGS_PARM2_CORE_SYSCALL(_ctx);
 		e->a2 = PT_REGS_PARM3_CORE_SYSCALL(_ctx);
@@ -859,6 +859,15 @@ generic_process_event_and_setup(struct pt_regs *ctx, struct bpf_map_def *tailcal
 	e->a3 = read_usdt_arg(ctx, config, 3, false);
 	e->a4 = read_usdt_arg(ctx, config, 4, false);
 #endif
+
+	return 0;
+}
+
+FUNC_INLINE int
+generic_process_event_and_setup_tc(struct pt_regs *ctx, struct bpf_map_def *tailcals)
+{
+	if (generic_process_event_and_setup(ctx))
+		return 0;
 
 	/* No arguments, go send.. */
 	if (arg_idx(0) == -1)

@@ -58,7 +58,7 @@ generic_fentry_event(void *ctx)
 __attribute__((section(SECTION_TAIL), used)) int
 generic_fentry_setup_event(void *ctx)
 {
-	return generic_process_event_and_setup(ctx, (struct bpf_map_def *)&fentry_calls);
+	return generic_process_event_and_setup_tc(ctx, (struct bpf_map_def *)&fentry_calls);
 }
 
 __attribute__((section(SECTION_TAIL), used)) int

@@ -70,7 +70,7 @@ generic_usdt_event(struct pt_regs *ctx)
 __attribute__((section(COMMON), used)) int
 generic_usdt_setup_event(void *ctx)
 {
-	return generic_process_event_and_setup(ctx, (struct bpf_map_def *)&usdt_calls);
+	return generic_process_event_and_setup_tc(ctx, (struct bpf_map_def *)&usdt_calls);
 }
 
 __attribute__((section(COMMON), used)) int

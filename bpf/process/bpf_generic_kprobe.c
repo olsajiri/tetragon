@@ -94,7 +94,7 @@ generic_kprobe_event(struct pt_regs *ctx)
 __attribute__((section(COMMON), used)) int
 generic_kprobe_setup_event(void *ctx)
 {
-	return generic_process_event_and_setup(ctx, (struct bpf_map_def *)&kprobe_calls);
+	return generic_process_event_and_setup_tc(ctx, (struct bpf_map_def *)&kprobe_calls);
 }
 
 #ifdef __LARGE_BPF_PROG
