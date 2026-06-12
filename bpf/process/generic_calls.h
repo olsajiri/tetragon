@@ -1397,8 +1397,8 @@ FUNC_INLINE int generic_process_filter(void)
 	return PFILTER_CONTINUE; /* will iterate to the next selector */
 }
 
-FUNC_INLINE int filter_args(void *ctx, struct bpf_map_def *tailcalls,
-			    int selidx, bool is_entry, int arg)
+FUNC_LOCAL int filter_args(void *ctx, struct bpf_map_def *tailcalls,
+			   int selidx, bool is_entry, int arg)
 {
 	struct msg_generic_kprobe *e;
 	int zero = 0;

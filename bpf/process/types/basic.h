@@ -2291,7 +2291,7 @@ filter_arg(struct msg_generic_kprobe *e, struct selector_arg_filter *filter, cha
 		return filter_arg_2(e, filter, args);
 }
 
-FUNC_INLINE int
+FUNC_LOCAL int
 selector_arg_offset(void *ctx, struct bpf_map_def *tailcalls, __u32 selidx,
 		    bool is_entry, int arg)
 {
