@@ -1398,9 +1398,15 @@ FUNC_INLINE int generic_process_filter(void)
 }
 
 FUNC_INLINE int filter_args(void *ctx, struct bpf_map_def *tailcalls,
-			    struct msg_generic_kprobe *e, int selidx, bool is_entry,
-			    int arg)
+			    int selidx, bool is_entry, int arg)
 {
+	struct msg_generic_kprobe *e;
+	int zero = 0;
+
+	e = map_lookup_elem(&process_call_heap, &zero);
+	if (!e)
+		return 0;
+
 	/* No selectors, accept by default */
 	if (!e->sel.active[SELECTORS_ACTIVE])
 		return 1;
@@ -1471,7 +1477,7 @@ FUNC_INLINE long generic_filter_arg(void *ctx, struct bpf_map_def *tailcalls,
 	if (!e)
 		return 0;
 	selidx = e->tailcall_index_selector;
-	pass = filter_args(ctx, tailcalls, e, selidx & MAX_SELECTORS_MASK,
+	pass = filter_args(ctx, tailcalls, selidx & MAX_SELECTORS_MASK,
 			   is_entry, arg);
 	if (!pass) {
 		selidx = next_selidx(e, selidx);
