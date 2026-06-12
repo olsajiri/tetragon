@@ -1119,13 +1119,22 @@ do_actions(void *ctx, struct selector_action *actions)
 	if (pcnf && pcnf->mode != POLICY_MODE_ENFORCE)
 		enforce_mode = false;
 
+	if (CONFIG(ITER_NUM)) {
+		bpf_for(l, 0, MAX_ACTIONS)
+		{
+			if (!has_action(actions, i))
+				break;
+			i = do_action(ctx, i, actions, &post, enforce_mode);
+		}
+	} else {
 #ifndef __LARGE_BPF_PROG
 #pragma unroll
 #endif
-	for (l = 0; l < MAX_ACTIONS; l++) {
-		if (!has_action(actions, i))
-			break;
-		i = do_action(ctx, i, actions, &post, enforce_mode);
+		for (l = 0; l < MAX_ACTIONS; l++) {
+			if (!has_action(actions, i))
+				break;
+			i = do_action(ctx, i, actions, &post, enforce_mode);
+		}
 	}
 
 	return post;
