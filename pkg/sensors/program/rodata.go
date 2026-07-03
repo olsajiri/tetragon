@@ -32,6 +32,11 @@ type rodataConfig struct {
 	Pad               [5]uint8
 }
 
+var rodata struct {
+	pinPath string
+	refs    int
+}
+
 func rodataCurrent() rodataConfig {
 	// We can't use numeric iterator until we get following fix from 6.9 kernel:
 	//   4f81c16f50ba bpf: Recognize that two registers are safe when their ranges match
@@ -68,7 +73,7 @@ func setConstant(v *ebpf.VariableSpec, value any) error {
 	return nil
 }
 
-func rodataInit(bpfDir string, spec *ebpf.CollectionSpec) (*sharedRodataConfig, error) {
+func rodataInit(bpfDir string, spec *ebpf.CollectionSpec) (*ebpf.Map, error) {
 	mapSpec := spec.Maps[sharedRodataConfigMap]
 	if mapSpec == nil {
 		return nil, nil
@@ -77,6 +82,14 @@ func rodataInit(bpfDir string, spec *ebpf.CollectionSpec) (*sharedRodataConfig, 
 	varSpec, ok := spec.Variables[sharedRodataConfigVar]
 	if !ok {
 		return nil, fmt.Errorf("variable %s not found", sharedRodataConfigVar)
+	}
+
+	pinPath := filepath.Join(bpfDir, "rodata")
+	if rodata.pinPath == "" {
+		rodata.pinPath = pinPath
+	} else if rodata.pinPath != pinPath {
+		return nil, fmt.Errorf("rodata pin path mismatch, current: '%s', new: '%s'",
+			rodata.pinPath, pinPath)
 	}
 
 	current := rodataCurrent()
@@ -96,7 +109,6 @@ func rodataInit(bpfDir string, spec *ebpf.CollectionSpec) (*sharedRodataConfig, 
 		flags |= uint32(features.BPF_F_MMAPABLE)
 	}
 
-	pinPath := filepath.Join(bpfDir, "rodata")
 	if err := prepareSharedRodataConfigPin(pinPath, flags, contents); err != nil {
 		return nil, err
 	}
@@ -107,7 +119,7 @@ func rodataInit(bpfDir string, spec *ebpf.CollectionSpec) (*sharedRodataConfig, 
 	}
 
 	AddGlobalMap(sharedRodataConfigMap)
-	return &sharedRodataConfig{pinPath: pinPath, m: m}, nil
+	return m, nil
 }
 
 func rodataConfigBytes(cfg rodataConfig) ([]byte, error) {
@@ -154,14 +166,6 @@ func prepareSharedRodataConfigPin(pinPath string, flags uint32, contents []byte)
 	return nil
 }
 
-// sharedRodataConfig is the shared, frozen .rodata.config map used by all
-// large BPF programs that share the same config, along with the bpffs path
-// it's pinned at.
-type sharedRodataConfig struct {
-	pinPath string
-	m       *ebpf.Map
-}
-
 // loadOrCreateSharedRodataConfig returns the shared rodata config map pinned
 // at pinPath. If no valid pin exists (none was there, or prepareSharedRodataConfigPin
 // just evicted a stale one), it creates, populates, freezes and pins a fresh map from
@@ -191,31 +195,28 @@ func loadOrCreateSharedRodataConfig(pinPath string, mapSpec *ebpf.MapSpec, flags
 	return m, nil
 }
 
-// rodataConfigPin tracks the shared rodata config map pin.
-// No locking needed: sensor load/unload is serialized by the sensor manager.
-var rodataConfigPin = struct {
-	path string
-	refs int
-}{}
-
-func acquireRodataConfigPin(pinPath string) {
-	rodataConfigPin.path = pinPath
-	rodataConfigPin.refs++
+func rodataAcquire(load *Program) {
+	load.hasRodata = true
+	rodata.refs++
 }
 
-func releaseRodataConfigPin(unpin bool) {
-	rodataConfigPin.refs--
-	if rodataConfigPin.refs > 0 {
+func rodataRelease(load *Program) {
+	if !load.hasRodata {
 		return
 	}
 
-	pinPath := rodataConfigPin.path
-	rodataConfigPin.path = ""
-	rodataConfigPin.refs = 0
+	load.hasRodata = false
+	rodata.refs--
 
-	if unpin {
-		if err := os.Remove(pinPath); err != nil && !os.IsNotExist(err) {
-			logger.GetLogger().Warn("Failed to unpin rodata config map", "map", pinPath, logfields.Error, err)
-		}
+	if rodata.refs > 0 {
+		return
+	}
+
+	rodata.pinPath = ""
+	rodata.refs = 0
+
+	if err := os.Remove(rodata.pinPath); err != nil && !os.IsNotExist(err) {
+		logger.GetLogger().Warn("Failed to unpin rodata config map", "map",
+			rodata.pinPath, logfields.Error, err)
 	}
 }

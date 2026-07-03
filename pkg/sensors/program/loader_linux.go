@@ -964,7 +964,7 @@ func doLoadProgram(
 		}
 	}
 
-	sharedCfg, err := rodataInit(bpfDir, spec)
+	rodata, err := rodataInit(bpfDir, spec)
 	if err != nil {
 		return nil, fmt.Errorf("setting up shared rodata config failed: %w", err)
 	}
@@ -973,14 +973,11 @@ func doLoadProgram(
 	// acquisition back unless this load makes it all the way to success. This
 	// keeps the refcount accurate even if a later step in this function fails,
 	// instead of leaking an untracked pin.
-	if sharedCfg != nil {
-		defer sharedCfg.m.Close()
-		acquireRodataConfigPin(sharedCfg.pinPath)
-		load.hasRodataConfigPin = true
+	if rodata != nil {
 		defer func() {
-			if retErr != nil {
-				releaseRodataConfigPin(true)
-				load.hasRodataConfigPin = false
+			rodata.Close()
+			if retErr == nil {
+				rodataAcquire(load)
 			}
 		}()
 	}
@@ -1063,8 +1060,8 @@ func doLoadProgram(
 	}
 
 	pinnedMaps := make(map[string]*ebpf.Map)
-	if sharedCfg != nil {
-		pinnedMaps[sharedRodataConfigMap] = sharedCfg.m
+	if rodata != nil {
+		pinnedMaps[sharedRodataConfigMap] = rodata
 	}
 	for name := range refMaps {
 		if name == sharedRodataConfigMap {
