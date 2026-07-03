@@ -969,19 +969,6 @@ func doLoadProgram(
 		return nil, fmt.Errorf("setting up shared rodata config failed: %w", err)
 	}
 
-	// Acquire the shared rodata config pin as soon as we have it, and roll the
-	// acquisition back unless this load makes it all the way to success. This
-	// keeps the refcount accurate even if a later step in this function fails,
-	// instead of leaking an untracked pin.
-	if rodata != nil {
-		defer func() {
-			rodata.Close()
-			if retErr == nil {
-				rodataAcquire(load)
-			}
-		}()
-	}
-
 	// We have following maps available for loading:
 	// - maps attached/pinned to program directly in load.PinMap[name]
 	// - maps passed to loader (all sensor maps)
@@ -1059,25 +1046,23 @@ func doLoadProgram(
 		return nil, fmt.Errorf("program for section '%s' not found", load.Label)
 	}
 
-	pinnedMaps := make(map[string]*ebpf.Map)
-	if rodata != nil {
-		pinnedMaps[sharedRodataConfigMap] = rodata
-	}
-	for name := range refMaps {
-		if name == sharedRodataConfigMap {
-			continue
-		}
-
-		var m *ebpf.Map
-		var err error
+	resolveRefMap := func(name string) (*ebpf.Map, error) {
 		var mapPath string
 
+		if name == sharedRodataConfigMap {
+			return rodata, nil
+		}
 		if pm, ok := resolveMap(name); ok {
 			mapPath = filepath.Join(bpfDir, pm.PinPath)
 		} else {
 			mapPath = filepath.Join(bpfDir, name)
 		}
-		m, err = ebpf.LoadPinnedMap(mapPath, nil)
+		return ebpf.LoadPinnedMap(mapPath, nil)
+	}
+
+	pinnedMaps := make(map[string]*ebpf.Map)
+	for name := range refMaps {
+		m, err := resolveRefMap(name)
 		if err == nil {
 			defer m.Close()
 			pinnedMaps[name] = m
@@ -1237,6 +1222,10 @@ func doLoadProgram(
 	// from kernel modules. At this point we don't need that anymore, so we can release
 	// the memory from it.
 	load.KernelTypes = nil
+
+	if rodata != nil {
+		rodataAcquire(load)
+	}
 
 	// Copy the loaded collection before it's destroyed
 	if keepCollection {

@@ -212,11 +212,11 @@ func rodataRelease(load *Program) {
 		return
 	}
 
-	rodata.pinPath = ""
-	rodata.refs = 0
-
 	if err := os.Remove(rodata.pinPath); err != nil && !os.IsNotExist(err) {
 		logger.GetLogger().Warn("Failed to unpin rodata config map", "map",
 			rodata.pinPath, logfields.Error, err)
 	}
+
+	rodata.pinPath = ""
+	rodata.refs = 0
 }
