@@ -925,7 +925,7 @@ func doLoadProgram(
 	loadOpts *LoadOpts,
 	verbose int,
 	keepCollection bool,
-) (*LoadedCollection, error) {
+) (retColl *LoadedCollection, retErr error) {
 	var btfSpec *btf.Spec
 	if btfFilePath := cachedbtf.GetCachedBTFFile(); btfFilePath != "/sys/kernel/btf/vmlinux" {
 		// Non-standard path to BTF, open it and provide it as 'KernelTypes'.
@@ -973,13 +973,12 @@ func doLoadProgram(
 	// acquisition back unless this load makes it all the way to success. This
 	// keeps the refcount accurate even if a later step in this function fails,
 	// instead of leaking an untracked pin.
-	loadSucceeded := false
 	if sharedCfg != nil {
 		defer sharedCfg.m.Close()
 		acquireRodataConfigPin(sharedCfg.pinPath)
 		load.hasRodataConfigPin = true
 		defer func() {
-			if !loadSucceeded {
+			if retErr != nil {
 				releaseRodataConfigPin(true)
 				load.hasRodataConfigPin = false
 			}
@@ -1241,8 +1240,6 @@ func doLoadProgram(
 	// from kernel modules. At this point we don't need that anymore, so we can release
 	// the memory from it.
 	load.KernelTypes = nil
-
-	loadSucceeded = true
 
 	// Copy the loaded collection before it's destroyed
 	if keepCollection {

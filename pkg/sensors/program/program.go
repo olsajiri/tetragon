@@ -175,6 +175,7 @@ type Program struct {
 
 	Link link.Link
 	Prog *ebpf.Program
+
 	// hasRodataConfigPin indicates this program holds a reference to the shared
 	// rodata config pin and should release it on unload.
 	hasRodataConfigPin bool
