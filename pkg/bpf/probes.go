@@ -7,6 +7,7 @@ const (
 	OverrideReturnProbe         = "override_return"
 	BuildIDProbe                = "buildid"
 	KprobeMultiProbe            = "kprobe_multi"
+	TracingMultiProbe           = "tracing_multi"
 	UprobeMultiProbe            = "uprobe_multi"
 	FmodRetProbe                = "fmodret"
 	FmodRetSyscallProbe         = "fmodret_syscall"
