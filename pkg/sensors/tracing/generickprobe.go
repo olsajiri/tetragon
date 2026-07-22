@@ -109,6 +109,10 @@ type genericKprobe struct {
 	// tags field of the Tracing Policy
 	tags []string
 
+	// BTF ID used by tracing_multi. It is zero for non-fentry probes and for
+	// fentry probes using the single-attach path.
+	btfID ciliumbtf.TypeID
+
 	// is there override defined for the kprobe
 	hasOverride bool
 
@@ -192,13 +196,26 @@ func createMultiKprobeSensor(polInfo *policyInfo, multiIDs []idtable.EntryID, ha
 	}
 
 	loadProgName, loadProgRetName := config.GenericKprobeObjs(true)
+	attach := fmt.Sprintf("kprobe_multi (%d functions)", len(multiIDs))
+	label := "kprobe.multi/generic_kprobe"
+	pinName := "multi_kprobe"
+	progType := "generic_kprobe"
+	tailCallsName := "kprobe_calls"
+	if has.fentry {
+		loadProgName, loadProgRetName = config.GenericMultiTracingObjs()
+		attach = fmt.Sprintf("fentry_multi (%d functions)", len(multiIDs))
+		label = "fentry/generic_fentry"
+		pinName = "multi_fentry"
+		progType = "generic_fentry"
+		tailCallsName = "fentry_calls"
+	}
 
 	load := program.Builder(
 		path.Join(option.Config.HubbleLib, loadProgName),
-		fmt.Sprintf("kprobe_multi (%d functions)", len(multiIDs)),
-		"kprobe.multi/generic_kprobe",
-		"multi_kprobe",
-		"generic_kprobe").
+		attach,
+		label,
+		pinName,
+		progType).
 		SetLoaderData(multiIDs).
 		SetPolicy(polInfo.name)
 	progs = append(progs, load)
@@ -206,7 +223,7 @@ func createMultiKprobeSensor(polInfo *policyInfo, multiIDs []idtable.EntryID, ha
 	configMap := program.MapBuilderProgram("config_map", load)
 	maps = append(maps, configMap)
 
-	tailCalls := program.MapBuilderProgram("kprobe_calls", load)
+	tailCalls := program.MapBuilderProgram(tailCallsName, load)
 	maps = append(maps, tailCalls)
 
 	filterMap := program.MapBuilderProgram("filter_map", load)
@@ -270,12 +287,24 @@ func createMultiKprobeSensor(polInfo *policyInfo, multiIDs []idtable.EntryID, ha
 	maps = append(maps, polInfo.policyConfMap(load), polInfo.selectorStatsMap(load))
 
 	if len(multiRetIDs) != 0 {
+		retAttach := fmt.Sprintf("%d retkprobes", len(multiRetIDs))
+		retLabel := "kprobe.multi/generic_retkprobe"
+		retPinName := "multi_retkprobe"
+		retProgType := "generic_kprobe"
+		retTailCallsName := "retkprobe_calls"
+		if has.fentry {
+			retAttach = fmt.Sprintf("fexit_multi (%d functions)", len(multiRetIDs))
+			retLabel = "fexit/generic_fexit"
+			retPinName = "multi_fexit"
+			retProgType = "generic_fentry"
+			retTailCallsName = "fexit_calls"
+		}
 		loadret := program.Builder(
 			path.Join(option.Config.HubbleLib, loadProgRetName),
-			fmt.Sprintf("%d retkprobes", len(multiIDs)),
-			"kprobe.multi/generic_retkprobe",
-			"multi_retkprobe",
-			"generic_kprobe").
+			retAttach,
+			retLabel,
+			retPinName,
+			retProgType).
 			SetRetProbe(true).
 			SetLoaderData(multiRetIDs).
 			SetPolicy(polInfo.name)
@@ -303,7 +332,7 @@ func createMultiKprobeSensor(polInfo *policyInfo, multiIDs []idtable.EntryID, ha
 		}
 		maps = append(maps, socktrack)
 
-		tailCalls := program.MapBuilderProgram("retkprobe_calls", loadret)
+		tailCalls := program.MapBuilderProgram(retTailCallsName, loadret)
 		maps = append(maps, tailCalls)
 
 		retConfigMap.SetMaxEntries(len(multiRetIDs))
@@ -494,6 +523,7 @@ func preValidateKprobes(log logger.FieldLogger, kprobes []v1alpha1.KProbeSpec, l
 
 type addKprobeIn struct {
 	useMulti      bool
+	btfIDs        map[string]ciliumbtf.TypeID
 	sensorPath    string
 	policyName    string
 	policyID      policyfilter.PolicyID
@@ -553,6 +583,7 @@ func createGenericKprobeSensor(
 	var maps []*program.Map
 	var ids []idtable.EntryID
 	var useMulti bool
+	var multiBTFIDs map[string]ciliumbtf.TypeID
 	var selMaps *selectors.KernelSelectorMaps
 	var celExprs *selectors.CelExprFunctions
 	var kprobes []v1alpha1.KProbeSpec
@@ -567,20 +598,28 @@ func createGenericKprobeSensor(
 
 	has := hasMapsSetup(spec, kprobes, fentry)
 
-	// use multi kprobe only if:
+	// use a multi attach only if:
 	// - it's not disabled by spec option
 	// - it's not disabled by command line option
 	// - there's support detected
-	if !polInfo.specOpts.DisableKprobeMulti {
-		useMulti = !option.Config.DisableKprobeMulti && bpf.HasKprobeMulti()
-
-		// arm does not override on top of kprobe.multi
-		if isArm() && (has.enforcer || has.override) {
-			useMulti = false
-		}
-		// there's no multi support yet
+	if !polInfo.specOpts.DisableKprobeMulti && !option.Config.DisableKprobeMulti {
 		if fentry {
-			useMulti = false
+			if bpf.HasTracingMulti() {
+				var err error
+				multiBTFIDs, err = resolveFentryMultiBTFIDs(valInfo)
+				if err == nil {
+					useMulti = true
+				} else {
+					logger.GetLogger().Debug("falling back to single fentry attachment", logfields.Error, err)
+				}
+			}
+		} else {
+			useMulti = bpf.HasKprobeMulti()
+
+			// arm does not override on top of kprobe.multi
+			if isArm() && (has.enforcer || has.override) {
+				useMulti = false
+			}
 		}
 	}
 
@@ -592,6 +631,7 @@ func createGenericKprobeSensor(
 
 	in := addKprobeIn{
 		useMulti:      useMulti,
+		btfIDs:        multiBTFIDs,
 		sensorPath:    name,
 		policyID:      polInfo.policyID,
 		policyName:    polInfo.name,
@@ -923,6 +963,7 @@ func addKprobe(funcName string, instance InstanceID, f *v1alpha1.KProbeSpec, in 
 		customHandler:     in.customHandler,
 		message:           msgField,
 		tags:              tagsField,
+		btfID:             in.btfIDs[funcName],
 		hasStackTrace:     selectors.HasStackTrace(f.Selectors),
 	}
 
@@ -1262,11 +1303,10 @@ func loadMultiKprobeSensor(ids []idtable.EntryID, bpfDir string, load *program.P
 	load.OverrideFmodRet = false
 	load.SetAttachData(data)
 
-	if err := program.LoadMultiKprobeProgram(bpfDir, load, maps, verbose); err == nil {
-		logger.GetLogger().Info(fmt.Sprintf("Loaded generic kprobe sensor: %s -> %s", load.Name, load.Attach))
-	} else {
+	if err := program.LoadMultiKprobeProgram(bpfDir, load, maps, verbose); err != nil {
 		return err
 	}
+	logger.GetLogger().Info(fmt.Sprintf("Loaded generic kprobe sensor: %s -> %s", load.Name, load.Attach))
 
 	return nil
 }
