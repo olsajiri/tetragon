@@ -21,7 +21,7 @@ func ExecObj() string {
 	if EnableRhel7Progs() {
 		return "bpf_execve_event_v310.o"
 	} else if EnableV61Progs() {
-		return "bpf_execve_event_v61.o"
+		return "bpf_execve_event_notc_v61.o"
 	} else if EnableV511Progs() {
 		return "bpf_execve_event_v511.o"
 	} else if EnableLargeProgs() {
