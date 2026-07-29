@@ -140,7 +140,7 @@ func CheckSensorLoad(sensors []*sensors.Sensor, sensorMaps []SensorMap, sensorPr
 	var baseProgs []SensorProg
 	var baseMaps []SensorMap
 
-	if cfg.EnableV61Progs() {
+	if cfg.EnableLargeProgs() {
 		baseProgs = []SensorProg{
 			0: {Name: "event_execve", Type: ebpf.RawTracepoint},
 			1: {Name: "event_exit", Type: ebpf.Kprobe, Match: ProgMatchPartial},
@@ -194,7 +194,7 @@ func CheckSensorLoad(sensors []*sensors.Sensor, sensorMaps []SensorMap, sensorPr
 
 		/* cgroup_rate_map */
 		progs := []uint{1, 2, 5, 6}
-		if cfg.EnableV61Progs() {
+		if cfg.EnableLargeProgs() {
 			progs = []uint{0, 1, 2, 4}
 		}
 		baseMaps = append(baseMaps, SensorMap{Name: "cgroup_rate_map", Progs: progs})
@@ -202,16 +202,10 @@ func CheckSensorLoad(sensors []*sensors.Sensor, sensorMaps []SensorMap, sensorPr
 
 	if cfg.EnableLargeProgs() {
 		// all programs
-		progs := []uint{0, 1, 2, 3, 4, 6}
-		updateProg := uint(6)
-		if cfg.EnableV61Progs() {
-			progs = []uint{0, 1, 2, 3, 4}
-			updateProg = 4
-		}
-		baseMaps = append(baseMaps, SensorMap{Name: "execve_map", Progs: progs})
+		baseMaps = append(baseMaps, SensorMap{Name: "execve_map", Progs: []uint{0, 1, 2, 3, 4}})
 
 		// execve_map_update
-		baseMaps = append(baseMaps, SensorMap{Name: "execve_map_update_data", Progs: []uint{updateProg}})
+		baseMaps = append(baseMaps, SensorMap{Name: "execve_map_update_data", Progs: []uint{4}})
 	} else {
 		// all programs except for execve_map_update, execve_rate
 		baseMaps = append(baseMaps, SensorMap{Name: "execve_map", Progs: []uint{0, 1, 2, 3, 4}})
@@ -219,13 +213,17 @@ func CheckSensorLoad(sensors []*sensors.Sensor, sensorMaps []SensorMap, sensorPr
 
 	if cfg.EnableV511Progs() {
 		progs := []uint{0, 1, 2, 3, 5}
-		if cfg.EnableV61Progs() {
+		if cfg.EnableLargeProgs() {
 			progs = []uint{0, 1, 2}
 		}
 		baseMaps = append(baseMaps, SensorMap{Name: "tg_rb_events", Progs: progs})
 		baseMaps = append(baseMaps, SensorMap{Name: "tg_conf_map", Progs: progs})
 	} else {
-		baseMaps = append(baseMaps, SensorMap{Name: "tg_conf_map", Progs: []uint{2, 5}})
+		progs := []uint{2, 5}
+		if cfg.EnableLargeProgs() {
+			progs = []uint{0, 2}
+		}
+		baseMaps = append(baseMaps, SensorMap{Name: "tg_conf_map", Progs: progs})
 	}
 
 	CheckSensorLoadBase(t, sensors, sensorMaps, sensorProgs, baseMaps, baseProgs)
