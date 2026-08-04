@@ -36,6 +36,24 @@ Keep it running and launch the sample from another terminal:
 ./run-sample.sh
 ```
 
+For a larger application, launch the canonical Spring PetClinic application
+instead. The helper clones it into the ignored `build/apps` directory, builds
+it with Maven in JDK 22, and monitors `OwnerController.showOwner`:
+
+```shell
+./run-petclinic.sh
+```
+
+Once startup completes, generate monitored requests with:
+
+```shell
+curl http://localhost:8080/owners/1
+```
+
+The checkout and Maven dependency cache are reused on subsequent runs. Set
+`PETCLINIC_REF` to select another branch or tag, or set `PETCLINIC_DIR` to use
+an existing checkout.
+
 Use `JAVA_MONITOR_CLASS` and `JAVA_MONITOR_METHOD` to override the instrumented
 class and method. Any command-line arguments to `run-tetragon.sh` are appended
 to the Tetragon invocation, and arguments to `run-sample.sh` are passed to the
@@ -47,6 +65,9 @@ example, monitor all methods in all non-excluded classes with:
 ```shell
 JAVA_MONITOR_CLASS= JAVA_MONITOR_METHOD= ./run-sample.sh
 ```
+
+The same empty filters work with `run-petclinic.sh`, but monitoring the entire
+application and all of its dependencies can generate a very high event rate.
 
 To watch only Java events from a third terminal:
 
