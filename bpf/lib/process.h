@@ -288,12 +288,6 @@ struct msg_execve_event {
 		struct msg_process process;
 		char buffer[PADDED_BUFFER];
 	};
-	/* below fields are not part of the event, serve just as
-	 * heap for execve programs
-	 */
-#ifdef __LARGE_BPF_PROG
-	struct heap_exe exe;
-#endif
 }; // All fields aligned so no 'packed' attribute.
 
 #define MBSET_INVALID_ID 0xffffffff
@@ -410,6 +404,7 @@ struct execve_heap {
 	union {
 		char pathname[PATHNAME_SIZE];
 		char maxpath[4096];
+		struct heap_exe exe;
 	};
 	struct execve_info info;
 };

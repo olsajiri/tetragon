@@ -55,10 +55,6 @@ read_args(void *ctx, struct msg_execve_event *event)
 
 	size = p->size & 0x1ff /* 2*MAXARGLENGTH - 1*/;
 	args = (char *)p + size;
-#ifdef __LARGE_BPF_PROG
-	event->exe.arg_start = size;
-#endif
-
 	if (args >= (char *)&event->process + BUFFER)
 		return 0;
 
@@ -85,9 +81,6 @@ read_args(void *ctx, struct msg_execve_event *event)
 		if (size > 0)
 			p->flags |= EVENT_DATA_ARGS;
 	}
-#ifdef __LARGE_BPF_PROG
-	event->exe.arg_len = size;
-#endif
 	p->size_args = (__u16)size;
 	return size;
 }
@@ -295,15 +288,14 @@ execve_rate_check(void *ctx, struct msg_execve_event *msg)
 }
 
 /**
- * execve_send_event() sends the collected execve event data.
+ * execve_finalize_event() updates the pid execve_map entry to reflect the new
+ * execve event and returns the validated event size.
  *
- * Its sole purpose is to update the pid execve_map entry to reflect the new
- * execve event that has already been collected, then send it to the perf
- * buffer.
+ * The caller is responsible for sending or submitting the event.
  */
-FUNC_LOCAL int
-execve_send_event(struct bpf_raw_tracepoint_args *ctx,
-		  struct msg_execve_event *event)
+FUNC_LOCAL __u64
+execve_finalize_event(struct bpf_raw_tracepoint_args *ctx,
+		      struct msg_execve_event *event)
 {
 	struct linux_binprm *bprm __maybe_unused = (struct linux_binprm *)ctx->args[2];
 	struct execve_map_value *curr;
@@ -315,11 +307,20 @@ execve_send_event(struct bpf_raw_tracepoint_args *ctx,
 #endif
 
 #ifdef __LARGE_BPF_PROG
+	struct execve_heap *heap;
+	struct heap_exe *exe;
+	__u32 zero = 0;
+
 	// Reading the absolute path of the process exe for matchBinaries.
 	// Historically we used the filename, a potentially relative path (maybe to
 	// a symlink) coming from the execve tracepoint. For kernels not supporting
 	// large BPF prog, we still use the filename.
-	read_exe((struct task_struct *)get_current_task(), &event->exe);
+	heap = map_lookup_elem(&execve_heap, &zero);
+	exe = heap ? &heap->exe : NULL;
+	if (exe) {
+		memset(exe, 0, sizeof(*exe));
+		read_exe((struct task_struct *)get_current_task(), exe);
+	}
 #endif
 
 	p = &event->process;
@@ -368,13 +369,16 @@ execve_send_event(struct bpf_raw_tracepoint_args *ctx,
 		__u32 off, len;
 
 		// read from proc exe stored at execve time
-		copy_exe_to_bin(&event->exe, &curr->bin);
+		if (exe)
+			copy_exe_to_bin(exe, &curr->bin);
+		else
+			curr->bin.path_length = -1;
 
-		off = event->exe.arg_start;
-		if (event->exe.arg_len > sizeof(curr->bin.args) - 2)
+		off = (offsetof(struct msg_process, args) + p->size_path) & 0x1ff;
+		if (p->size_args > sizeof(curr->bin.args) - 2)
 			len = sizeof(curr->bin.args) - 2;
 		else
-			len = event->exe.arg_len;
+			len = p->size_args;
 		with_errmetrics(probe_read, curr->bin.args, len, (char *)&event->process + off);
 
 		// there's a null byte between each argv element, so we terminate with
@@ -402,6 +406,19 @@ execve_send_event(struct bpf_raw_tracepoint_args *ctx,
 		sizeof(struct msg_execve_key) + sizeof(__u64) +
 		sizeof(struct msg_cred) + sizeof(struct msg_ns) +
 		sizeof(struct msg_execve_key) + p->size);
+	event->common.size = size;
+	return size;
+}
+
+/**
+ * execve_send_event() finalizes and sends the collected execve event data.
+ */
+FUNC_LOCAL int
+execve_send_event(struct bpf_raw_tracepoint_args *ctx,
+		  struct msg_execve_event *event)
+{
+	__u64 size = execve_finalize_event(ctx, event);
+
 	event_output_metric(ctx, MSG_OP_EXECVE, event, size);
 	return 0;
 }
