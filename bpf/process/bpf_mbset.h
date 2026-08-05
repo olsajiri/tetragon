@@ -62,6 +62,26 @@ struct execve_map_value *__update_mb_task(struct execve_map_value *task, struct 
 	return parent;
 }
 
+#ifdef __V61_BPF_PROG
+struct update_mb_task_ctx {
+	struct execve_map_value *task;
+	struct binary *bin;
+	struct execve_map_value *last;
+};
+
+static long update_mb_task_v61(__u32 index, void *data)
+{
+	struct update_mb_task_ctx *ctx = data;
+	struct execve_map_value *parent;
+
+	parent = __update_mb_task(ctx->task, ctx->bin);
+	if (!parent || parent == ctx->last)
+		return 1;
+	ctx->last = parent;
+	return 0;
+}
+#endif
+
 FUNC_INLINE
 void update_mb_task(struct execve_map_value *task, struct binary *bin)
 {
@@ -84,12 +104,21 @@ void update_mb_task(struct execve_map_value *task, struct binary *bin)
 			last = parent;
 		}
 	} else {
+#ifdef __V61_BPF_PROG
+		struct update_mb_task_ctx ctx = {
+			.task = task,
+			.bin = bin,
+		};
+
+		loop(1024, update_mb_task_v61, &ctx, 0);
+#else
 		for (int i = 0; i < 1024; i++) {
 			parent = __update_mb_task(task, bin);
 			if (!parent || parent == last)
 				break;
 			last = parent;
 		}
+#endif
 	}
 
 	bin->mb_gen = *gen;

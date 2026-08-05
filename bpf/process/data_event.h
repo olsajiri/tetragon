@@ -42,6 +42,37 @@ b:
 	return -1;
 }
 
+#ifdef __V61_BPF_PROG
+struct do_bytes_ctx {
+	void *event_ctx;
+	struct msg_data *msg;
+	unsigned long arg;
+	size_t bytes;
+	int error;
+};
+
+static long do_bytes_v61(__u32 index, void *data)
+{
+	struct do_bytes_ctx *ctx = data;
+	size_t rd_bytes;
+	int err;
+
+	if (ctx->error)
+		return 0;
+	index &= 0xf;
+	rd_bytes = index * MSG_DATA_ARG_LEN;
+	if (rd_bytes >= ctx->bytes)
+		return 0;
+	err = __do_bytes(ctx->event_ctx, ctx->msg, ctx->arg + rd_bytes,
+			 ctx->bytes - rd_bytes);
+	if (err < 0) {
+		ctx->error = err;
+		return 0;
+	}
+	return 0;
+}
+#endif
+
 FUNC_LOCAL long
 do_bytes(void *ctx, struct msg_data *msg, unsigned long arg, size_t bytes)
 {
@@ -49,6 +80,47 @@ do_bytes(void *ctx, struct msg_data *msg, unsigned long arg, size_t bytes)
 	int err = 0, i __maybe_unused;
 
 #ifdef __LARGE_BPF_PROG
+#ifdef __V61_BPF_PROG
+	if (CONFIG(ITER_NUM)) {
+		int loop_err = 0;
+
+		bpf_for(i, 0, 10)
+		{
+			size_t pos = (i & 0xf) * MSG_DATA_ARG_LEN;
+
+			if (pos >= bytes)
+				continue;
+			err = __do_bytes(ctx, msg, arg + pos, bytes - pos);
+			if (err < 0) {
+				loop_err = err;
+				break;
+			}
+			rd_bytes = pos + err;
+		}
+		if (loop_err) {
+			err = loop_err;
+			goto error;
+		}
+		return rd_bytes;
+	} else {
+		struct do_bytes_ctx data = {
+			.event_ctx = ctx,
+			.msg = msg,
+			.arg = arg,
+			.bytes = bytes,
+		};
+		size_t max_bytes = 10 * MSG_DATA_ARG_LEN;
+
+		if (!bytes)
+			return __do_bytes(ctx, msg, arg, bytes);
+		loop(10, do_bytes_v61, &data, 0);
+		if (data.error) {
+			err = data.error;
+			goto error;
+		}
+		return bytes < max_bytes ? bytes : max_bytes;
+	}
+#else
 	for (i = 0; i < 10; i++) {
 		err = __do_bytes(ctx, msg, arg + rd_bytes, bytes - rd_bytes);
 		if (err < 0)
@@ -57,6 +129,7 @@ do_bytes(void *ctx, struct msg_data *msg, unsigned long arg, size_t bytes)
 		if (rd_bytes == bytes)
 			return rd_bytes;
 	}
+#endif /* __V61_BPF_PROG */
 #else
 #define BYTES_COPY                                                    \
 	err = __do_bytes(ctx, msg, arg + rd_bytes, bytes - rd_bytes); \
