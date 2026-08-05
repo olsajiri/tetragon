@@ -209,14 +209,12 @@ read_execve_shared_info(void *ctx, struct msg_process *p, __u64 pid)
 }
 
 FUNC_LOCAL void
-execve_event_init(struct bpf_raw_tracepoint_args *ctx,
-		  struct msg_execve_event *event)
+execve_event_init_fixed(struct bpf_raw_tracepoint_args *ctx,
+			struct msg_execve_event *event)
 {
 	struct task_struct *task = (struct task_struct *)get_current_task();
-	struct linux_binprm *bprm = (struct linux_binprm *)ctx->args[2];
 	struct execve_map_value *parent;
 	struct msg_process *p;
-	char *filename;
 	__u64 pid;
 
 	pid = get_current_pid_tgid();
@@ -250,12 +248,6 @@ execve_event_init(struct bpf_raw_tracepoint_args *ctx,
 	p->auid = get_auid();
 	read_execve_shared_info(ctx, p, pid);
 
-	probe_read(&filename, sizeof(filename), _(&bprm->filename));
-	p->size += read_path(ctx, event, filename);
-	p->size += read_args(ctx, event);
-	p->size += read_cwd(ctx, p);
-	p->size += read_envs(ctx, event);
-
 	event->common.op = MSG_OP_EXECVE;
 	event->common.flags = 0;
 	event->common.ktime = p->ktime;
@@ -273,6 +265,25 @@ execve_event_init(struct bpf_raw_tracepoint_args *ctx,
 
 	// Zero the cleanup key to prevent user space confusion.
 	event->cleanup_key = (struct msg_execve_key){ 0 };
+}
+
+FUNC_LOCAL void
+execve_event_init(struct bpf_raw_tracepoint_args *ctx,
+		  struct msg_execve_event *event)
+{
+	struct linux_binprm *bprm = (struct linux_binprm *)ctx->args[2];
+	struct msg_process *p;
+	char *filename;
+
+	execve_event_init_fixed(ctx, event);
+	p = &event->process;
+
+	probe_read(&filename, sizeof(filename), _(&bprm->filename));
+	p->size += read_path(ctx, event, filename);
+	p->size += read_args(ctx, event);
+	p->size += read_cwd(ctx, p);
+	p->size += read_envs(ctx, event);
+	event->common.size = offsetof(struct msg_execve_event, process) + p->size;
 }
 
 FUNC_LOCAL bool
@@ -294,8 +305,9 @@ execve_rate_check(void *ctx, struct msg_execve_event *msg)
  * The caller is responsible for sending or submitting the event.
  */
 FUNC_LOCAL __u64
-execve_finalize_event(struct bpf_raw_tracepoint_args *ctx,
-		      struct msg_execve_event *event)
+execve_finalize_event_from(struct bpf_raw_tracepoint_args *ctx,
+			   struct msg_execve_event *event,
+			   const void *args_source)
 {
 	struct linux_binprm *bprm __maybe_unused = (struct linux_binprm *)ctx->args[2];
 	struct execve_map_value *curr;
@@ -307,20 +319,17 @@ execve_finalize_event(struct bpf_raw_tracepoint_args *ctx,
 #endif
 
 #ifdef __LARGE_BPF_PROG
-	struct execve_heap *heap;
 	struct heap_exe *exe;
 	__u32 zero = 0;
 
-	// Reading the absolute path of the process exe for matchBinaries.
-	// Historically we used the filename, a potentially relative path (maybe to
-	// a symlink) coming from the execve tracepoint. For kernels not supporting
-	// large BPF prog, we still use the filename.
+#ifdef __V61_BPF_PROG
+	exe = (struct heap_exe *)map_lookup_elem(&tg_binary_heap, &zero);
+#else
+	struct execve_heap *heap;
+
 	heap = map_lookup_elem(&execve_heap, &zero);
 	exe = heap ? &heap->exe : NULL;
-	if (exe) {
-		memset(exe, 0, sizeof(*exe));
-		read_exe((struct task_struct *)get_current_task(), exe);
-	}
+#endif
 #endif
 
 	p = &event->process;
@@ -367,24 +376,30 @@ execve_finalize_event(struct bpf_raw_tracepoint_args *ctx,
 		binary_reset(&curr->bin);
 #ifdef __LARGE_BPF_PROG
 		__u32 off, len;
-
-		// read from proc exe stored at execve time
-		if (exe)
-			copy_exe_to_bin(exe, &curr->bin);
-		else
-			curr->bin.path_length = -1;
+		const void *source;
 
 		off = (offsetof(struct msg_process, args) + p->size_path) & 0x1ff;
 		if (p->size_args > sizeof(curr->bin.args) - 2)
 			len = sizeof(curr->bin.args) - 2;
 		else
 			len = p->size_args;
-		with_errmetrics(probe_read, curr->bin.args, len, (char *)&event->process + off);
+		source = args_source ? args_source : (char *)&event->process + off;
+		with_errmetrics(probe_read, curr->bin.args, len, source);
 
 		// there's a null byte between each argv element, so we terminate with
 		// two of them to make it possible to identify the end of the buffer
 		curr->bin.args[len] = 0x00;
 		curr->bin.args[len + 1] = 0x00;
+
+		// Reading the absolute path of the process exe for matchBinaries.
+		// v6.1 uses tg_binary_heap so execve_heap can retain staged payload data.
+		if (exe) {
+			memset(exe, 0, sizeof(*exe));
+			read_exe((struct task_struct *)get_current_task(), exe);
+			copy_exe_to_bin(exe, &curr->bin);
+		} else {
+			curr->bin.path_length = -1;
+		}
 #else
 		struct linux_binprm *bprm = (struct linux_binprm *)ctx->args[2];
 		char *filename;
@@ -408,6 +423,13 @@ execve_finalize_event(struct bpf_raw_tracepoint_args *ctx,
 		sizeof(struct msg_execve_key) + p->size);
 	event->common.size = size;
 	return size;
+}
+
+FUNC_LOCAL __u64
+execve_finalize_event(struct bpf_raw_tracepoint_args *ctx,
+		      struct msg_execve_event *event)
+{
+	return execve_finalize_event_from(ctx, event, NULL);
 }
 
 /**
