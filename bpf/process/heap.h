@@ -4,12 +4,13 @@
 #ifndef __HEAP_H__
 #define __HEAP_H__
 
-#define HEAP_RO_SIZE 16384
+#define HEAP_RO_SIZE 25712
 
 struct heap_ro_value {
 	/*
 	 * STRING_MAPS_HEAP_SIZE
 	 * sizeof(struct ratelimit_key) + 128)
+	 * sizeof(struct msg_generic_kprobe)
 	 */
 	char buf[HEAP_RO_SIZE];
 };
