@@ -84,9 +84,8 @@ FUNC_INLINE int arg_idx(int index)
 {
 	struct msg_generic_kprobe *e;
 	struct event_config *config;
-	int zero = 0;
 
-	e = map_lookup_elem(&process_call_heap, &zero);
+	e = uprobe_heap_get();
 	if (!e)
 		return -1;
 
