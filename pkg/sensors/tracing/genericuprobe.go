@@ -469,6 +469,7 @@ type uprobeHas struct {
 	substring            bool
 	sleepablePreloadSize int
 	sleepableOffloadSize int
+	uprobeHeapSize       int
 }
 
 func validateMultiUprobeConsistency(uprobes []v1alpha1.UProbeSpec) error {
@@ -926,6 +927,9 @@ func createGenericUprobeSensor(
 
 	// user sleepable_offload override
 	has.sleepableOffloadSize = polInfo.specOpts.SleepableOffloadSize
+
+	// user process_call_heap override
+	has.uprobeHeapSize = polInfo.specOpts.UprobeHeapSize
 
 	if useMulti {
 		// if we are using multi-uprobe, CEL expressions are shared across all uprobes
@@ -1462,11 +1466,16 @@ func getSleepableOffloadMap(userSize int, load *program.Program) *program.Map {
 	return m
 }
 
-func getProcessCallHeapMap(load *program.Program) *program.Map {
+func getProcessCallHeapMap(userSize int, load *program.Program) *program.Map {
 	var m *program.Map
 
-	m = program.MapShared("process_call_heap", load)
-	m.SetMaxEntries(option.Config.UprobeHeapSize)
+	if userSize != 0 {
+		m = program.MapBuilderProgram("process_call_heap", load)
+		m.SetMaxEntries(userSize)
+	} else {
+		m = program.MapShared("process_call_heap", load)
+		m.SetMaxEntries(option.Config.UprobeHeapSize)
+	}
 	return m
 }
 
@@ -1538,7 +1547,7 @@ func createMultiUprobeSensor(polInfo *policyInfo, sensorPath string, multiIDs []
 	tailCalls := program.MapBuilderProgram("uprobe_calls", load)
 	filterMap := program.MapBuilderProgram("filter_map", load)
 	retProbe := program.MapBuilderSensor("retprobe_map", load)
-	processCallHeap := getProcessCallHeapMap(load)
+	processCallHeap := getProcessCallHeapMap(has.uprobeHeapSize, load)
 
 	maps = append(maps, configMap, tailCalls, filterMap, retProbe, processCallHeap)
 	maps = append(maps, getUprobeHeapMap("buffer_heap_map", has.uprobeHeapSize, load))
@@ -1603,7 +1612,7 @@ func createMultiUprobeSensor(polInfo *policyInfo, sensorPath string, multiIDs []
 		retConfigMap.SetMaxEntries(len(multiRetIDs))
 		retFilterMap.SetMaxEntries(len(multiRetIDs))
 
-		retProcessCallHeap := getProcessCallHeapMap(loadret)
+		retProcessCallHeap := getProcessCallHeapMap(has.uprobeHeapSize, loadret)
 		maps = append(maps, retProcessCallHeap)
 		maps = append(maps, getUprobeHeapMap("buffer_heap_map", has.uprobeHeapSize, loadret))
 		maps = append(maps, getUprobeHeapMap("string_maps_heap", has.uprobeHeapSize, loadret))
