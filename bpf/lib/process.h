@@ -691,6 +691,47 @@ event_ringbuf_reserve(u8 msg_op, u64 size)
 		event_output_update_error_metric(msg_op, -EAGAIN);
 	return event;
 }
+
+#ifdef __V61_BPF_PROG
+/* event_ringbuf_reserve_dynptr() reserves @size bytes via the dynptr ring
+ * buffer API, and hands back a flat pointer good for the whole reservation
+ * via dynptr_data().
+ *
+ * @size MUST be a compile-time constant - the kernel requires
+ * dynptr_data()'s length argument to be a verifier-known constant, it
+ * cannot be a runtime value. Callers therefore always reserve a fixed,
+ * worst-case size rather than a per-event estimate (see e.g.
+ * EXECVE_RB_SIZE in bpf_execve_event.h) - that's what makes it safe to
+ * request the exact same @size back from dynptr_data() every time.
+ */
+FUNC_INLINE void *
+event_ringbuf_reserve_dynptr(u8 msg_op, u32 size, struct bpf_dynptr *ptr)
+{
+	long err = ringbuf_reserve_dynptr(&tg_rb_events, size, 0, ptr);
+	void *data;
+
+	if (err) {
+		/* ringbuf_reserve_dynptr() initializes *ptr even on failure
+		 * (to an invalid dynptr) - it still needs a matching discard
+		 * to release the reference the verifier tracks for it.
+		 */
+		ringbuf_discard_dynptr(ptr, 0);
+		event_output_update_error_metric(msg_op, err);
+		return 0;
+	}
+
+	data = dynptr_data(ptr, 0, size);
+	if (!data) {
+		/* Same as above: the reservation still holds a reference
+		 * even though dynptr_data() failed to hand back a pointer
+		 * to it, so it must still be discarded here.
+		 */
+		ringbuf_discard_dynptr(ptr, 0);
+		event_output_update_error_metric(msg_op, -EINVAL);
+	}
+	return data;
+}
+#endif
 #else
 FUNC_INLINE long
 event_output(void *ctx, void *data, u64 size)

@@ -39,7 +39,7 @@ read_args(void *ctx, struct msg_execve_event *event)
 	args_size = source.len;
 
 #ifdef __LARGE_BPF_PROG
-	/* Store pointer infos and late copy in execve_send_event() when storing
+	/* Store pointer infos and late copy in execve_finalize_event() when storing
 	 * the cache args.
 	 */
 	event->args_source.start = start_stack;
@@ -281,14 +281,15 @@ execve_rate_check(void *ctx, struct msg_execve_event *msg)
 }
 
 /**
- * execve_send_event() sends the collected execve event data.
- *
- * Its sole purpose is to update the pid execve_map entry to reflect the new
- * execve event that has already been collected, then send it to the perf
- * buffer.
+ * execve_finalize_event() updates the pid execve_map entry to reflect the new
+ * execve event that has already been collected, and returns the size to
+ * send it with. It does not do the actual send itself - callers do that
+ * (event_output_metric() for the legacy path, or nothing at all for the
+ * ring buffer path, which already committed to sending exactly
+ * EXECVE_RB_SIZE bytes at reserve time regardless of this return value).
  */
-FUNC_LOCAL int
-execve_send_event(struct bpf_raw_tracepoint_args *ctx,
+FUNC_LOCAL uint64_t
+execve_finalize_event(struct bpf_raw_tracepoint_args *ctx,
 		  struct msg_execve_event *event)
 {
 	struct linux_binprm *bprm __maybe_unused = (struct linux_binprm *)ctx->args[2];
@@ -375,8 +376,88 @@ execve_send_event(struct bpf_raw_tracepoint_args *ctx,
 		sizeof(struct msg_execve_key) + sizeof(__u64) +
 		sizeof(struct msg_cred) + sizeof(struct msg_ns) +
 		sizeof(struct msg_execve_key) + p->size);
-	event_output_metric(ctx, MSG_OP_EXECVE, event, size);
+	return size;
+}
+
+#ifdef __V61_BPF_PROG
+/* Fixed reservation size for event_execve_rb() below: sizeof(struct
+ * msg_execve_event), matching execve_msg_heap_map's value type exactly (the
+ * heap map used by the non-ring-buffer path).
+ *
+ * Reserving a fixed size rather than a per-event estimate means
+ * dynptr_data() (see event_ringbuf_reserve_dynptr()) can use this same
+ * constant every time and always succeed, since every reservation is
+ * exactly this size - so the returned pointer is valid for the *entire*
+ * struct, including the exe/args_source scratch-only fields past the
+ * on-wire process/buffer union (read_args() writes event->args_source, and
+ * execve_finalize_event()'s read_exe()/copy_exe_to_bin() pattern below writes
+ * and reads event->exe). read_path()/read_args()/read_cwd()/read_envs()
+ * (and getcwd()) can therefore be called completely unchanged by this
+ * path: their existing internal bounds checks are already calibrated
+ * against this same backing size, since that's what execve_msg_heap_map
+ * already provides for the non-ring-buffer path too.
+ */
+#define EXECVE_RB_SIZE sizeof(struct msg_execve_event)
+
+/**
+ * event_execve_rb() - ring buffer reserve/commit variant of
+ * execve_event_init() + execve_rate_check() + execve_finalize_event() combined.
+ *
+ * Reserve, fill, check, maybe discard - same order fork's
+ * event_wake_up_new_task() (bpf_fork.c) uses, and execve_rate_check() is the
+ * same shared function the legacy path calls, so it fills event->kube and
+ * reads event->common.ktime itself.
+ *
+ * The unfilled tail is zeroed before submit so slack bytes never carry
+ * stale ring buffer memory (e.g. left over from a previous, unrelated
+ * event) into user space.
+ */
+FUNC_LOCAL int
+event_execve_rb(struct bpf_raw_tracepoint_args *ctx)
+{
+	struct msg_execve_event *event;
+	struct bpf_dynptr ptr;
+	struct msg_process *p;
+
+	event = event_ringbuf_reserve_dynptr(MSG_OP_EXECVE, EXECVE_RB_SIZE, &ptr);
+	if (!event)
+		return 0;
+
+	execve_event_init(ctx, event);
+
+	if (!execve_rate_check(ctx, event)) {
+		ringbuf_discard_dynptr(&ptr, 0);
+		return 0;
+	}
+
+	/* Return value unused: EXECVE_RB_SIZE is what actually gets
+	 * submitted below regardless of the real content size this
+	 * computes - unlike the legacy path, the ring buffer reservation
+	 * is already fixed at reserve time and can't be resized down.
+	 */
+	execve_finalize_event(ctx, event);
+	p = &event->process;
+
+	/* Zero the unfilled tail of the reservation so no stale ring buffer
+	 * memory from a previous event is ever exposed, even though nothing
+	 * in the current parser reads past common.size. `event` is a flat
+	 * pointer valid for the whole EXECVE_RB_SIZE reservation, so this is
+	 * a plain byte loop.
+	 */
+	{
+		__u64 start = offsetof(struct msg_execve_event, process) + p->size;
+		__u64 idx;
+
+		bpf_for(idx, start, EXECVE_RB_SIZE)
+		{
+			((char *)event)[idx] = 0;
+		}
+	}
+
+	event->common.size = offsetof(struct msg_execve_event, process) + p->size;
+	ringbuf_submit_dynptr(&ptr, 0);
 	return 0;
 }
+#endif /* __V61_BPF_PROG */
 
 #endif /* __BPF_EXECVE_EVENT_H__ */
