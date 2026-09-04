@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"net"
 	"os"
 	"runtime"
 	"sync"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/cilium/tetragon/pkg/api/readyapi"
 	"github.com/cilium/tetragon/pkg/config"
+	"github.com/cilium/tetragon/pkg/javaipc"
 	"github.com/cilium/tetragon/pkg/logger/logfields"
 	"github.com/cilium/tetragon/pkg/option"
 	"github.com/cilium/tetragon/pkg/strutils"
@@ -96,6 +98,16 @@ func (k *Observer) RunEvents(stopCtx context.Context, ready func()) error {
 
 		if err != nil {
 			return fmt.Errorf("creating ring buffer reader failed: %w", err)
+		}
+	}
+
+	// Publish the Java control socket before readiness so agents can connect as
+	// soon as the daemon announces that it is ready.
+	var javaListener net.Listener
+	if option.Config.JavaIPCPath != "" {
+		javaListener, err = javaipc.Listen(option.Config.JavaIPCPath)
+		if err != nil {
+			return err
 		}
 	}
 
@@ -181,6 +193,25 @@ func (k *Observer) RunEvents(stopCtx context.Context, ready func()) error {
 						rawSampleBufPool.Put(bufPtr)
 					}
 				}
+			}
+		})
+	}
+
+	if javaListener != nil {
+		wg.Go(func() {
+			err := javaipc.ServeListener(stopCtx, option.Config.JavaIPCPath, javaListener, func(data []byte) {
+				bufPtr := rawSampleBufPool.Get().(*[]byte)
+				*bufPtr = append((*bufPtr)[:0], data...)
+				select {
+				case eventsQueue <- bufPtr:
+					RingbufReceived.Inc()
+				default:
+					rawSampleBufPool.Put(bufPtr)
+					queueLost.Inc()
+				}
+			})
+			if err != nil && stopCtx.Err() == nil {
+				k.log.Warn("Java IPC listener stopped", logfields.Error, err)
 			}
 		})
 	}

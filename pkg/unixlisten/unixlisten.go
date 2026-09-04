@@ -27,6 +27,12 @@ import (
 // location. Not sure about other systems, but at least on Linux renaming a
 // unix socket file after the listen seems to work without issues.
 func ListenWithRename(path string, mode os.FileMode) (net.Listener, error) {
+	return ListenWithRenameNetwork("unix", path, mode)
+}
+
+// ListenWithRenameNetwork is ListenWithRename for a caller-selected Unix
+// socket network, including unixpacket.
+func ListenWithRenameNetwork(network, path string, mode os.FileMode) (net.Listener, error) {
 	os.Remove(path)
 
 	baseName := filepath.Base(path)
@@ -40,17 +46,19 @@ func ListenWithRename(path string, mode os.FileMode) (net.Listener, error) {
 	defer os.RemoveAll(tmpDir)
 
 	tmpPath := filepath.Join(tmpDir, baseName)
-	l, err := net.Listen("unix", tmpPath)
+	l, err := net.Listen(network, tmpPath)
 	if err != nil {
 		return nil, err
 	}
 
 	if err := os.Chmod(tmpPath, mode); err != nil {
+		_ = l.Close()
 		return nil, err
 	}
 
 	err = os.Rename(tmpPath, path)
 	if err != nil {
+		_ = l.Close()
 		return nil, err
 	}
 	return l, nil

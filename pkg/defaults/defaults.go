@@ -46,6 +46,10 @@ const (
 	// without TLS material.
 	DefaultUnixSocket = DefaultRunDir + "tetragon.sock"
 
+	// DefaultJavaSocket is the Unix socket used by Java agents to register
+	// their shared-memory event rings.
+	DefaultJavaSocket = DefaultRunDir + "java.sock"
+
 	// BugtoolExtraFiles is the file location for extra files to include in bugtool archives.
 	// Written by the daemon at startup, read by the CLI at bugtool time.
 	BugtoolExtraFiles = DefaultRunDir + "tetragon-bugtool-extra-files.json"
