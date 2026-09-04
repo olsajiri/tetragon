@@ -8,6 +8,7 @@
 #include "bpf_rate.h"
 #include "data_event.h"
 #include "config.h"
+#include "kstrlen.h"
 
 struct {
 	__uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
@@ -39,7 +40,7 @@ read_args(void *ctx, struct msg_execve_event *event)
 	args_size = source.len;
 
 #ifdef __LARGE_BPF_PROG
-	/* Store pointer infos and late copy in execve_send_event() when storing
+	/* Store pointer infos and late copy in execve_finalize_event() when storing
 	 * the cache args.
 	 */
 	event->args_source.start = start_stack;
@@ -188,6 +189,175 @@ read_cwd(void *ctx, struct msg_process *p)
 	return getcwd(p, p->size, p->pid);
 }
 
+/* Full (uncapped, no data-event) variants used by event_execve_rb(), where
+ * execve_event_size() has already reserved exactly enough ring buffer space
+ * for the real (measured) size of each field - these trust that reservation
+ * and just read the full amount, no truncation/data-event fallback needed.
+ */
+
+FUNC_INLINE __u32
+read_path_full(void *ctx, struct msg_execve_event *event, void *filename)
+{
+	struct msg_process *p = &event->process;
+	__s32 size = 0;
+	__u32 flags = 0;
+	char *earg;
+	__u32 max = MAX_BUF_LEN;
+
+	earg = (void *)p + offsetof(struct msg_process, args);
+
+	asm volatile("%[max] &= 0xfff;\n"
+		     : [max] "+r"(max));
+	max -= 1; /* leave room for probe_read_str's forced NUL */
+
+	size = probe_read_str(earg, max, filename);
+	if (size < 0) {
+		flags |= EVENT_ERROR_FILENAME;
+		size = 0;
+	} else if (size > 0) {
+		/* remove null byte */
+		size -= 1;
+	}
+
+	p->size_path = (__u16)size;
+	p->flags |= flags;
+	return size;
+}
+
+FUNC_INLINE __u32
+read_args_full(void *ctx, struct msg_execve_event *event)
+{
+	struct task_struct *task = (struct task_struct *)get_current_task();
+	struct msg_process *p = &event->process;
+	unsigned long start_stack, args_size, off;
+	struct args_source source;
+	__u32 size = 0;
+	char *args;
+	int err;
+
+#ifdef __LARGE_BPF_PROG
+	event->args_source.start = 0;
+	event->args_source.len = 0;
+#endif
+
+	if (!read_task_args_source(task, &source))
+		return 0;
+	start_stack = source.start;
+	args_size = source.len;
+
+#ifdef __LARGE_BPF_PROG
+	/* Store pointer infos and late copy in execve_finalize_event() when storing
+	 * the cache args.
+	 */
+	event->args_source.start = start_stack;
+	event->args_source.len = args_size;
+#endif
+
+	if (args_size < 2) {
+		/* args contains at most a '\0', nothing to read */
+		p->size_args = 0;
+		return 0;
+	}
+
+	off = p->size & 0x3fff; /* widened from read_args()'s 0x1ff - must cover a full-length path */
+	args = (char *)p + off;
+
+	args_size -= 1; // strip trailing '\0'
+	size = args_size & 0xfff; /* verifier bound only - trust execve_event_size()'s reservation */
+
+	err = with_errmetrics(probe_read, args, size, (char *)start_stack);
+	if (err < 0) {
+		p->flags |= EVENT_ERROR_ARGS;
+		size = 0;
+	}
+
+	p->size_args = (__u16)size;
+	return size;
+}
+
+FUNC_INLINE __u32
+read_cwd_full(void *ctx, struct msg_process *p)
+{
+	struct task_struct *task = (struct task_struct *)get_current_task();
+	struct fs_struct *fs = NULL;
+	char *buffer;
+	int flags = 0, size;
+	unsigned long off;
+
+	probe_read(&fs, sizeof(fs), _(&task->fs));
+	if (!fs) {
+		p->flags |= EVENT_ERROR_CWD;
+		return 0;
+	}
+
+	buffer = d_path_local(_(&fs->pwd), &size, &flags);
+	if (!buffer)
+		return 0;
+
+	off = p->size & 0x3fff; /* widened from getcwd()'s 0x3ff - must cover full path+args */
+	asm volatile("%[size] &= 0xfff;\n"
+		     : [size] "+r"(size));
+	probe_read((char *)p + off, size, buffer);
+
+	if (size == 0)
+		p->flags |= EVENT_ROOT_CWD;
+	if (flags & UNRESOLVED_PATH_COMPONENTS)
+		p->flags |= EVENT_ERROR_PATH_COMPONENTS;
+	p->flags = p->flags & ~(EVENT_NEEDS_CWD | EVENT_ERROR_CWD);
+	p->size_cwd = (__u16)size;
+	return size;
+}
+
+FUNC_INLINE __u32
+read_envs_full(void *ctx, struct msg_execve_event *event)
+{
+	struct msg_process *p = &event->process;
+	struct mm_struct *mm = NULL;
+	struct task_struct *task;
+	__u32 size = 0, flags = 0;
+	unsigned long envs_size, off;
+	unsigned long env_start, env_end;
+	char *envs;
+	int err;
+
+	if (!CONFIG(ENV_VARS_ENABLED))
+		return 0;
+
+	task = (struct task_struct *)get_current_task();
+	probe_read(&mm, sizeof(mm), _(&task->mm));
+	if (!mm)
+		return 0;
+
+	with_errmetrics(probe_read, &env_start, sizeof(env_start), _(&mm->env_start));
+	with_errmetrics(probe_read, &env_end, sizeof(env_end), _(&mm->env_end));
+
+	if (!env_start || !env_end)
+		return 0;
+
+	envs_size = env_end - env_start;
+	if (envs_size < 2) {
+		/* envs contains at most a '\0', nothing to read */
+		p->size_envs = 0;
+		return 0;
+	}
+
+	off = p->size & 0x3fff; /* widened - must cover full path+args+cwd */
+	envs = (char *)p + off;
+
+	envs_size -= 1; // strip trailing '\0'
+	size = envs_size & 0xfff; /* verifier bound only - trust execve_event_size()'s reservation */
+
+	err = probe_read(envs, size, (char *)env_start);
+	if (err < 0) {
+		flags |= EVENT_ENVS_ERROR;
+		size = 0;
+	}
+
+	p->size_envs = size;
+	p->flags |= flags;
+	return size;
+}
+
 FUNC_INLINE void
 read_execve_shared_info(void *ctx, struct msg_process *p, __u64 pid)
 {
@@ -209,7 +379,7 @@ read_execve_shared_info(void *ctx, struct msg_process *p, __u64 pid)
 
 FUNC_LOCAL void
 execve_event_init(struct bpf_raw_tracepoint_args *ctx,
-		  struct msg_execve_event *event)
+		  struct msg_execve_event *event, bool full)
 {
 	struct task_struct *task = (struct task_struct *)get_current_task();
 	struct linux_binprm *bprm = (struct linux_binprm *)ctx->args[2];
@@ -250,10 +420,18 @@ execve_event_init(struct bpf_raw_tracepoint_args *ctx,
 	read_execve_shared_info(ctx, p, pid);
 
 	probe_read(&filename, sizeof(filename), _(&bprm->filename));
-	p->size += read_path(ctx, event, filename);
-	p->size += read_args(ctx, event);
-	p->size += read_cwd(ctx, p);
-	p->size += read_envs(ctx, event);
+
+	if (full) {
+		p->size += read_path_full(ctx, event, filename);
+		p->size += read_args_full(ctx, event);
+		p->size += read_cwd_full(ctx, p);
+		p->size += read_envs_full(ctx, event);
+	} else {
+		p->size += read_path(ctx, event, filename);
+		p->size += read_args(ctx, event);
+		p->size += read_cwd(ctx, p);
+		p->size += read_envs(ctx, event);
+	}
 
 	event->common.op = MSG_OP_EXECVE;
 	event->common.flags = 0;
@@ -286,16 +464,9 @@ execve_rate_check(void *ctx, struct msg_execve_event *msg)
 	return cgroup_rate(ctx, &msg->kube, msg->common.ktime);
 }
 
-/**
- * execve_send_event() sends the collected execve event data.
- *
- * Its sole purpose is to update the pid execve_map entry to reflect the new
- * execve event that has already been collected, then send it to the perf
- * buffer.
- */
-FUNC_LOCAL int
-execve_send_event(struct bpf_raw_tracepoint_args *ctx,
-		  struct msg_execve_event *event)
+FUNC_LOCAL uint64_t
+execve_finalize_event(struct bpf_raw_tracepoint_args *ctx,
+		      struct msg_execve_event *event)
 {
 	struct linux_binprm *bprm __maybe_unused = (struct linux_binprm *)ctx->args[2];
 	struct execve_map_value *curr;
@@ -381,8 +552,115 @@ execve_send_event(struct bpf_raw_tracepoint_args *ctx,
 		sizeof(struct msg_execve_key) + sizeof(__u64) +
 		sizeof(struct msg_cred) + sizeof(struct msg_ns) +
 		sizeof(struct msg_execve_key) + p->size);
-	event_output_metric(ctx, MSG_OP_EXECVE, event, size);
+	return size;
+}
+
+#ifdef __V61_BPF_PROG
+#define EXECVE_RB_SIZE sizeof(struct msg_execve_event)
+
+FUNC_LOCAL __u64
+execve_event_size(struct bpf_raw_tracepoint_args *ctx)
+{
+	struct linux_binprm *bprm = (struct linux_binprm *)ctx->args[2];
+	struct task_struct *task = (struct task_struct *)get_current_task();
+	__u64 size = offsetof(struct msg_process, args);
+	char *filename;
+
+	/* -- path, mirrors read_path() -- */
+	probe_read(&filename, sizeof(filename), _(&bprm->filename));
+	{
+		int psize = kstrlen(filename);
+
+		if (psize < 0)
+			psize = 0;
+		size += psize;
+	}
+
+	/* -- args, mirrors read_args() -- */
+	{
+		struct args_source source;
+		__u32 asize = 0;
+
+		if (read_task_args_source(task, &source)) {
+			unsigned long args_size = source.len;
+
+			if (args_size >= 2)
+				asize = (__u32)(args_size - 1);
+		}
+		size += asize;
+	}
+
+	/* -- cwd, mirrors read_cwd()/getcwd() -- */
+	{
+		struct fs_struct *fs = NULL;
+		int cwd_size = 0;
+
+		probe_read(&fs, sizeof(fs), _(&task->fs));
+		if (fs)
+			cwd_size = d_path_local_size(_(&fs->pwd));
+		size += cwd_size;
+	}
+
+	/* -- envs, mirrors read_envs() -- */
+	if (CONFIG(ENV_VARS_ENABLED)) {
+		struct mm_struct *mm = NULL;
+		__u32 esize = 0;
+
+		probe_read(&mm, sizeof(mm), _(&task->mm));
+		if (mm) {
+			unsigned long env_start = 0, env_end = 0;
+
+			probe_read(&env_start, sizeof(env_start), _(&mm->env_start));
+			probe_read(&env_end, sizeof(env_end), _(&mm->env_end));
+			if (env_start && env_end) {
+				unsigned long envs_size = env_end - env_start;
+
+				if (envs_size >= 2)
+					esize = (__u32)(envs_size - 1);
+			}
+		}
+		size += esize;
+	}
+
+	return offsetof(struct msg_execve_event, process) + size;
+}
+
+FUNC_INLINE void
+execve_event_zero_tail(struct msg_execve_event *event)
+{
+	struct msg_process *p = &event->process;
+	__u64 size = offsetof(struct msg_execve_event, process) + p->size;
+
+	event->common.size = size;
+	// todo: zero the tail
+}
+
+FUNC_LOCAL int
+event_execve_rb(struct bpf_raw_tracepoint_args *ctx)
+{
+	struct msg_execve_event *event;
+	struct bpf_dynptr ptr;
+	__u64 size;
+
+	size = execve_event_size(ctx);
+
+	event = event_ringbuf_reserve_dynptr(MSG_OP_EXECVE, size, &ptr);
+	if (!event)
+		return 0;
+
+	execve_event_init(ctx, event, true);
+
+	if (!execve_rate_check(ctx, event)) {
+		ringbuf_discard_dynptr(&ptr, 0);
+		return 0;
+	}
+
+	execve_finalize_event(ctx, event);
+	execve_event_zero_tail(event);
+
+	ringbuf_submit_dynptr(&ptr, 0);
 	return 0;
 }
+#endif /* __V61_BPF_PROG */
 
 #endif /* __BPF_EXECVE_EVENT_H__ */
