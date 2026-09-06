@@ -18,6 +18,7 @@ import (
 
 	"github.com/cilium/tetragon/api/v1/tetragon"
 	"github.com/cilium/tetragon/pkg/bpf"
+	"github.com/cilium/tetragon/pkg/ktime"
 	"github.com/cilium/tetragon/pkg/logger"
 	"github.com/cilium/tetragon/pkg/logger/logfields"
 	"github.com/cilium/tetragon/pkg/sensors/exec/execvemap"
@@ -29,6 +30,10 @@ type Cache struct {
 	deleteChan chan *ProcessInternal
 	stopChan   chan struct{}
 	stopOnce   sync.Once
+
+	// additional pid map to array of tetragon.Process pointers
+	pidIndexMu sync.RWMutex
+	pidIndex   map[uint32][]*tetragon.Process
 }
 
 // processColor tracks the garbage collection state of a process. It is stored
@@ -167,13 +172,15 @@ func NewCache(
 ) (*Cache, error) {
 	// Stash a reference to the Cache to refer to later in the eviction closure.
 	pm := &Cache{
-		size: processCacheSize,
+		size:     processCacheSize,
+		pidIndex: make(map[uint32][]*tetragon.Process),
 	}
 
 	lruCache, err := lru.NewWithEvict(
 		processCacheSize,
 		func(_ string, evicted *ProcessInternal) {
 			processCacheEvictions.Inc()
+			pm.removePID(evicted.process)
 
 			// Perform parent-- for LRU-evicted entries that will never
 			// reach the exit handler.
@@ -222,6 +229,7 @@ func (pc *Cache) get(processID string) (*ProcessInternal, error) {
 // clone or execve events
 func (pc *Cache) add(process *ProcessInternal) bool {
 	evicted := pc.cache.Add(process.process.ExecId, process)
+	pc.addPID(process.process)
 	if !evicted {
 		processCacheTotal.Inc()
 	} else {
@@ -233,11 +241,80 @@ func (pc *Cache) add(process *ProcessInternal) bool {
 func (pc *Cache) remove(process *tetragon.Process) bool {
 	present := pc.cache.Remove(process.ExecId)
 	if present {
+		pc.removePID(process)
 		processCacheTotal.Dec()
 	} else {
 		processCacheMisses.WithLabelValues("remove").Inc()
 	}
 	return present
+}
+
+func (pc *Cache) addPID(process *tetragon.Process) {
+	if process == nil || process.Pid == nil {
+		return
+	}
+	if process.StartTime == nil || !process.StartTime.IsValid() {
+		return
+	}
+	pid := process.Pid.Value
+	pc.pidIndexMu.Lock()
+	pc.pidIndex[pid] = append(pc.pidIndex[pid], process)
+	pc.pidIndexMu.Unlock()
+}
+
+func (pc *Cache) removePID(process *tetragon.Process) {
+	if process == nil {
+		return
+	}
+	if process.Pid == nil {
+		return
+	}
+	pid := process.Pid.Value
+	pc.pidIndexMu.Lock()
+	defer pc.pidIndexMu.Unlock()
+	entries := pc.pidIndex[pid]
+	for i, indexed := range entries {
+		if indexed == nil || indexed.ExecId != process.ExecId {
+			continue
+		}
+		entries = append(entries[:i], entries[i+1:]...)
+		if len(entries) == 0 {
+			delete(pc.pidIndex, pid)
+		} else {
+			pc.pidIndex[pid] = entries
+		}
+		return
+	}
+}
+
+func (pc *Cache) getByPID(pid uint32, eventKtime uint64) (*ProcessInternal, *ProcessInternal) {
+	pc.pidIndexMu.RLock()
+	eventTime := ktime.ToProto(eventKtime).AsTime()
+	var found *tetragon.Process
+	var foundStartTime time.Time
+	for _, candidate := range pc.pidIndex[pid] {
+		if candidate == nil || candidate.StartTime == nil || !candidate.StartTime.IsValid() {
+			continue
+		}
+		startTime := candidate.StartTime.AsTime()
+		if startTime.After(eventTime) {
+			continue
+		}
+		if found == nil || startTime.After(foundStartTime) {
+			found = candidate
+			foundStartTime = startTime
+		}
+	}
+	pc.pidIndexMu.RUnlock()
+	if found == nil {
+		return nil, nil
+	}
+	internal, err := pc.get(found.ExecId)
+	if err != nil {
+		return nil, nil
+	}
+	parent, _ := pc.get(internal.process.ParentExecId)
+	return internal, parent
 }
 
 func (pc *Cache) len() int {
