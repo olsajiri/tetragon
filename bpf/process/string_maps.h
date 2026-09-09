@@ -91,12 +91,28 @@ DEFINE_ARRAY_OF_STRING_MAPS(9)
 DEFINE_ARRAY_OF_STRING_MAPS(10)
 #endif
 
+/*
+ * The uprobe/usdt probes path in kernel do not disable preemption, so a
+ * single per-cpu slot can be corrupted by two interleaved invocations on
+ * the same CPU. Use a hash keyed by pid_tgid there instead; see
+ * process/heap.h for the accompanying lookup-or-seed helper.
+ */
+#if defined(GENERIC_UPROBE) || defined(GENERIC_URETPROBE) || defined(GENERIC_USDT)
+struct {
+	__uint(type, BPF_MAP_TYPE_HASH);
+	__uint(map_flags, BPF_F_NO_PREALLOC);
+	__uint(max_entries, 1); // will be resized by agent
+	__type(key, __u64);
+	__uint(value_size, STRING_MAPS_HEAP_SIZE);
+} string_maps_heap SEC(".maps");
+#else
 struct {
 	__uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
 	__uint(max_entries, 1);
 	__type(key, __u32);
 	__uint(value_size, STRING_MAPS_HEAP_SIZE);
 } string_maps_heap SEC(".maps");
+#endif
 
 #define STRING_PREFIX_MAX_LENGTH 256
 
