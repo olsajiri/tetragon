@@ -86,6 +86,23 @@ FUNC_INLINE void *string_postfix_maps_heap_get(void)
 		return 0;
 	return map_lookup_elem(&string_postfix_maps_heap, &key);
 }
+
+FUNC_INLINE void *ratelimit_heap_get(void)
+{
+	__u64 key = get_current_pid_tgid();
+	void *val = map_lookup_elem(&ratelimit_heap, &key);
+	struct heap_ro_value *ro;
+	__u32 zidx = 0;
+
+	if (val)
+		return val;
+	ro = map_lookup_elem(&heap_ro_zero, &zidx);
+	if (!ro)
+		return 0;
+	if (map_update_elem(&ratelimit_heap, &key, &ro->ratelimit_heap, BPF_ANY))
+		return 0;
+	return map_lookup_elem(&ratelimit_heap, &key);
+}
 #else
 FUNC_INLINE void *string_maps_heap_get(void)
 {
@@ -106,6 +123,13 @@ FUNC_INLINE void *string_postfix_maps_heap_get(void)
 	__u32 zero = 0;
 
 	return map_lookup_elem(&string_postfix_maps_heap, &zero);
+}
+
+FUNC_INLINE void *ratelimit_heap_get(void)
+{
+	__u32 zero = 0;
+
+	return map_lookup_elem(&ratelimit_heap, &zero);
 }
 #endif /* GENERIC_UPROBE || GENERIC_URETPROBE || GENERIC_USDT */
 
