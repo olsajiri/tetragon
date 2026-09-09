@@ -1530,6 +1530,7 @@ func createMultiUprobeSensor(polInfo *policyInfo, sensorPath string, multiIDs []
 	maps = append(maps, getUprobeHeapMap("buffer_heap_map", load))
 	maps = append(maps, getUprobeHeapMap("string_maps_heap", load))
 	maps = append(maps, getUprobeHeapMap("string_prefix_maps_heap", load))
+	maps = append(maps, getUprobeHeapMap("string_postfix_maps_heap", load))
 	maps = append(maps, configMap, tailCalls, filterMap, retProbe)
 	maps = append(maps, createSelectorMaps(load, getUprobeProgramSelector(load, nil))...)
 
@@ -1592,6 +1593,7 @@ func createMultiUprobeSensor(polInfo *policyInfo, sensorPath string, multiIDs []
 		maps = append(maps, getUprobeHeapMap("buffer_heap_map", loadret))
 		maps = append(maps, getUprobeHeapMap("string_maps_heap", loadret))
 		maps = append(maps, getUprobeHeapMap("string_prefix_maps_heap", loadret))
+		maps = append(maps, getUprobeHeapMap("string_postfix_maps_heap", loadret))
 	}
 
 	return progs, maps, nil
