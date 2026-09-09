@@ -58,6 +58,8 @@ FUNC_INLINE bool heap_update(heap_key_t key)
 		return false;
 	if (map_update_elem(&string_postfix_maps_heap, &key, ro, BPF_ANY))
 		return false;
+	if (map_update_elem(&ratelimit_heap, &key, ro, BPF_ANY))
+		return false;
 	return true;
 }
 
@@ -151,6 +153,7 @@ FUNC_INLINE long heap_dtor(long ret)
 	map_delete_elem(&string_maps_heap, &key);
 	map_delete_elem(&string_prefix_maps_heap, &key);
 	map_delete_elem(&string_postfix_maps_heap, &key);
+	map_delete_elem(&ratelimit_heap, &key);
 	return ret;
 }
 
