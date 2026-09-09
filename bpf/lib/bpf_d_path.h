@@ -6,6 +6,7 @@
 
 #include "bpf_helpers.h"
 #include "config.h"
+#include "../process/heap.h"
 
 #define ENAMETOOLONG 36 /* File name too long */
 
@@ -43,12 +44,56 @@ struct buffer_heap_map_value {
 	unsigned char buf[MAX_BUF_LEN + 256];
 };
 
+_Static_assert(sizeof(struct buffer_heap_map_value) <= HEAP_RO_SIZE,
+	       "heap_ro_value's value must fit struct buffer_heap_map_value");
+
+/*
+ * The uprobe/usdt probes path in kernel do not disable preemption,
+ * we need to use hash instead of per-cpu heap.
+ */
+#if defined(GENERIC_UPROBE) || defined(GENERIC_URETPROBE) || defined(GENERIC_USDT)
+struct {
+	__uint(type, BPF_MAP_TYPE_HASH);
+	__uint(map_flags, BPF_F_NO_PREALLOC);
+	__uint(max_entries, 1); // will be resized by agent
+	__type(key, __u64);
+	__type(value, struct buffer_heap_map_value);
+} buffer_heap_map SEC(".maps");
+
+FUNC_INLINE void *buffer_heap_map_get(void)
+{
+	__u64 key = get_current_pid_tgid();
+	void *val = map_lookup_elem(&buffer_heap_map, &key);
+	struct heap_ro_value *ro;
+	__u32 zidx = 0;
+
+	if (val)
+		return val;
+	ro = map_lookup_elem(&heap_ro_zero, &zidx);
+	if (!ro)
+		return 0;
+	if (map_update_elem(&buffer_heap_map, &key, ro, BPF_ANY))
+		return 0;
+	return map_lookup_elem(&buffer_heap_map, &key);
+}
+
+#else
+
 struct {
 	__uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
 	__uint(max_entries, 1);
 	__type(key, int);
 	__type(value, struct buffer_heap_map_value);
 } buffer_heap_map SEC(".maps");
+
+FUNC_INLINE void *buffer_heap_map_get(void)
+{
+	int zero = 0;
+
+	return map_lookup_elem(&buffer_heap_map, &zero);
+}
+
+#endif /* GENERIC_UPROBE || GENERIC_URETPROBE || GENERIC_USDT */
 
 FUNC_INLINE struct mount *real_mount(struct vfsmount *mnt)
 {
@@ -336,10 +381,9 @@ __d_path_local(const struct path *path, char *buf, int *buflen, int *error)
 FUNC_INLINE char *
 d_path_local(const struct path *path, int *buflen, int *error)
 {
-	int zero = 0;
 	char *buffer = 0;
 
-	buffer = map_lookup_elem(&buffer_heap_map, &zero);
+	buffer = buffer_heap_map_get();
 	if (!buffer)
 		return 0;
 
