@@ -43,12 +43,68 @@ struct buffer_heap_map_value {
 	unsigned char buf[MAX_BUF_LEN + 256];
 };
 
+/*
+ * The uprobe/usdt probes path in kernel do not disable preemption, so a
+ * single per-cpu slot can be corrupted by two interleaved invocations on
+ * the same CPU. Use a hash keyed by pid_tgid there instead.
+ */
+#if defined(GENERIC_UPROBE) || defined(GENERIC_URETPROBE) || defined(GENERIC_USDT)
+struct {
+	__uint(type, BPF_MAP_TYPE_HASH);
+	__uint(map_flags, BPF_F_NO_PREALLOC);
+	__uint(max_entries, 1); // will be resized by agent
+	__type(key, __u64);
+	__type(value, struct buffer_heap_map_value);
+} buffer_heap_map SEC(".maps");
+#else
 struct {
 	__uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
 	__uint(max_entries, 1);
 	__type(key, int);
 	__type(value, struct buffer_heap_map_value);
 } buffer_heap_map SEC(".maps");
+#endif
+
+#if defined(GENERIC_UPROBE) || defined(GENERIC_URETPROBE) || defined(GENERIC_USDT)
+// A dedicated, always-zero template to seed a fresh buffer_heap_map hash
+// entry from (map_update_elem needs a value to copy from, and this one is
+// too large to build on the BPF stack).
+struct {
+	__uint(type, BPF_MAP_TYPE_ARRAY);
+	__uint(max_entries, 1);
+	__type(key, __u32);
+	__type(value, struct buffer_heap_map_value);
+} buffer_heap_map_ro_zero SEC(".maps");
+#endif
+
+/*
+ * Returns the per-invocation buffer_heap_map scratch buffer, creating and
+ * zero-seeding it on first use by this thread when it's a hash map (see the
+ * "#if defined(...)" above); heap_dtor() in process/generic_maps.h deletes
+ * the entry once the invocation is done.
+ */
+FUNC_INLINE void *buffer_heap_map_get(void)
+{
+#if defined(GENERIC_UPROBE) || defined(GENERIC_URETPROBE) || defined(GENERIC_USDT)
+	__u64 key = get_current_pid_tgid();
+	void *val = map_lookup_elem(&buffer_heap_map, &key);
+	struct buffer_heap_map_value *ro;
+	__u32 zidx = 0;
+
+	if (val)
+		return val;
+	ro = map_lookup_elem(&buffer_heap_map_ro_zero, &zidx);
+	if (!ro)
+		return 0;
+	if (map_update_elem(&buffer_heap_map, &key, ro, BPF_ANY))
+		return 0;
+	return map_lookup_elem(&buffer_heap_map, &key);
+#else
+	int zero = 0;
+
+	return map_lookup_elem(&buffer_heap_map, &zero);
+#endif
+}
 
 FUNC_INLINE struct mount *real_mount(struct vfsmount *mnt)
 {
@@ -336,10 +392,9 @@ __d_path_local(const struct path *path, char *buf, int *buflen, int *error)
 FUNC_INLINE char *
 d_path_local(const struct path *path, int *buflen, int *error)
 {
-	int zero = 0;
 	char *buffer = 0;
 
-	buffer = map_lookup_elem(&buffer_heap_map, &zero);
+	buffer = buffer_heap_map_get();
 	if (!buffer)
 		return 0;
 

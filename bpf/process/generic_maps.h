@@ -5,6 +5,7 @@
 #define __GENERIC_MAPS_H__
 
 #include "lib/data_msg.h"
+#include "lib/bpf_d_path.h"
 #include "errmetrics.h"
 #include "heap.h"
 
@@ -34,6 +35,7 @@ FUNC_INLINE long heap_dtor(long ret)
 	heap_key_t key = heap_key();
 
 	map_delete_elem(&process_call_heap, &key);
+	map_delete_elem(&buffer_heap_map, &key);
 	return ret;
 }
 

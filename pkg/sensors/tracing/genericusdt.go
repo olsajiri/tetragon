@@ -246,6 +246,7 @@ func createMultiUsdtSensor(
 	processCallHeap := getProcessCallHeapMap(load)
 
 	maps = append(maps, configMap, tailCalls, filterMap, workloadsMap, processCallHeap)
+	maps = append(maps, getUprobeHeapMap("buffer_heap_map", has.uprobeHeapSize, load))
 
 	filterMap.SetMaxEntries(len(multiIDs))
 	configMap.SetMaxEntries(len(multiIDs))

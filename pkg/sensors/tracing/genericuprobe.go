@@ -1471,6 +1471,25 @@ func getProcessCallHeapMap(load *program.Program) *program.Map {
 	return m
 }
 
+// getUprobeHeapMap sizes one of the other per-invocation scratch heaps that
+// switch to a pid_tgid-keyed hash map for uprobe/usdt sensors (see
+// bpf/process/heap.h and bpf/lib/bpf_d_path.h). They answer the same
+// question process_call_heap does ("how many threads can be mid-probe at
+// once"), so they share its --uprobe-heap-size / uprobe-heap-size sizing
+// instead of getting independent knobs.
+func getUprobeHeapMap(name string, userSize int, load *program.Program) *program.Map {
+	var m *program.Map
+
+	if userSize != 0 {
+		m = program.MapBuilderProgram(name, load)
+		m.SetMaxEntries(userSize)
+	} else {
+		m = program.MapShared(name, load)
+		m.SetMaxEntries(option.Config.UprobeHeapSize)
+	}
+	return m
+}
+
 func createMultiUprobeSensor(polInfo *policyInfo, sensorPath string, multiIDs []idtable.EntryID, has uprobeHas) ([]*program.Program, []*program.Map, error) {
 	var multiRetIDs []idtable.EntryID
 	var progs []*program.Program
@@ -1523,6 +1542,7 @@ func createMultiUprobeSensor(polInfo *policyInfo, sensorPath string, multiIDs []
 	processCallHeap := getProcessCallHeapMap(load)
 
 	maps = append(maps, configMap, tailCalls, filterMap, retProbe, processCallHeap)
+	maps = append(maps, getUprobeHeapMap("buffer_heap_map", has.uprobeHeapSize, load))
 	maps = append(maps, createSelectorMaps(load, getUprobeProgramSelector(load, nil))...)
 
 	if has.substring {
@@ -1582,6 +1602,7 @@ func createMultiUprobeSensor(polInfo *policyInfo, sensorPath string, multiIDs []
 
 		retProcessCallHeap := getProcessCallHeapMap(loadret)
 		maps = append(maps, retProcessCallHeap)
+		maps = append(maps, getUprobeHeapMap("buffer_heap_map", has.uprobeHeapSize, loadret))
 	}
 
 	return progs, maps, nil
