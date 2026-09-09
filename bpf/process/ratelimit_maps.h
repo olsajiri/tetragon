@@ -44,11 +44,48 @@ struct {
 
 // The value has extra headroom to allow copying argument data without upsetting the verifier.
 // This is not hashed when the key is used in the ratelimit_map.
+#if defined(GENERIC_UPROBE) || defined(GENERIC_URETPROBE) || defined(GENERIC_USDT)
+
+struct {
+	__uint(type, BPF_MAP_TYPE_HASH);
+	__uint(map_flags, BPF_F_NO_PREALLOC);
+	__uint(max_entries, 1); // will be resized by agent
+	__type(key, __u64);
+	__type(value, __u8[sizeof(struct ratelimit_key) + 128]);
+} ratelimit_heap SEC(".maps");
+
+FUNC_INLINE void *ratelimit_heap_get(void)
+{
+	__u64 key = get_current_pid_tgid();
+	void *val = map_lookup_elem(&ratelimit_heap, &key);
+	struct heap_ro_value *ro;
+	__u32 zidx = 0;
+
+	if (val)
+		return val;
+	ro = map_lookup_elem(&heap_ro_zero, &zidx);
+	if (!ro)
+		return 0;
+	if (map_update_elem(&ratelimit_heap, &key, ro, BPF_ANY))
+		return 0;
+	return map_lookup_elem(&ratelimit_heap, &key);
+}
+
+#else
 struct {
 	__uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
 	__uint(max_entries, 1);
 	__type(key, __u32);
 	__type(value, __u8[sizeof(struct ratelimit_key) + 128]);
 } ratelimit_heap SEC(".maps");
+
+FUNC_INLINE void *ratelimit_heap_get(void)
+{
+	__u32 zero = 0;
+
+	return map_lookup_elem(&ratelimit_heap, &zero);
+}
+
+#endif /* GENERIC_UPROBE || GENERIC_URETPROBE || GENERIC_USDT */
 
 #endif /* __RATELIMIT_MAPS_H__ */
