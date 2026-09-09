@@ -5,6 +5,7 @@
 #define __GENERIC_MAPS_H__
 
 #include "lib/data_msg.h"
+#include "lib/bpf_d_path.h"
 #include "errmetrics.h"
 #include "heap.h"
 
@@ -44,6 +45,13 @@ FUNC_INLINE bool heap_update(heap_key_t key)
 		errmetrics(E2BIG);
 		return false;
 	}
+	/*
+	 * Seed all hash-backed heaps here. The filter path is large and its
+	 * heap getters must remain lookup-only to avoid multiplying verifier
+	 * states with map miss/update branches.
+	 */
+	if (map_update_elem(&buffer_heap_map, &key, ro, BPF_ANY))
+		return false;
 	return true;
 }
 
@@ -133,6 +141,7 @@ FUNC_INLINE long heap_dtor(long ret)
 	__u64 key = get_current_pid_tgid();
 
 	map_delete_elem(&process_call_heap, &key);
+	map_delete_elem(&buffer_heap_map, &key);
 	return ret;
 }
 
