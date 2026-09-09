@@ -1545,6 +1545,7 @@ func createMultiUprobeSensor(polInfo *policyInfo, sensorPath string, multiIDs []
 	maps = append(maps, getUprobeHeapMap("buffer_heap_map", has.uprobeHeapSize, load))
 	maps = append(maps, getUprobeHeapMap("string_maps_heap", has.uprobeHeapSize, load))
 	maps = append(maps, getUprobeHeapMap("string_prefix_maps_heap", has.uprobeHeapSize, load))
+	maps = append(maps, getUprobeHeapMap("string_postfix_maps_heap", has.uprobeHeapSize, load))
 	maps = append(maps, createSelectorMaps(load, getUprobeProgramSelector(load, nil))...)
 
 	if has.substring {
@@ -1607,6 +1608,7 @@ func createMultiUprobeSensor(polInfo *policyInfo, sensorPath string, multiIDs []
 		maps = append(maps, getUprobeHeapMap("buffer_heap_map", has.uprobeHeapSize, loadret))
 		maps = append(maps, getUprobeHeapMap("string_maps_heap", has.uprobeHeapSize, loadret))
 		maps = append(maps, getUprobeHeapMap("string_prefix_maps_heap", has.uprobeHeapSize, loadret))
+		maps = append(maps, getUprobeHeapMap("string_postfix_maps_heap", has.uprobeHeapSize, loadret))
 	}
 
 	return progs, maps, nil
