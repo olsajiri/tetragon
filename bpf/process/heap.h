@@ -11,6 +11,7 @@ struct heap_ro_value {
 	union {
 		char string_maps_heap[STRING_MAPS_HEAP_SIZE];
 		char ratelimit_heap[sizeof(struct ratelimit_key) + 128];
+		char string_prefix_maps_heap[sizeof(struct string_prefix_lpm_trie)];
 		struct msg_generic_kprobe process_call_heap;
 	};
 };
@@ -50,12 +51,35 @@ FUNC_INLINE void *string_maps_heap_get(void)
 		return 0;
 	return map_lookup_elem(&string_maps_heap, &key);
 }
+FUNC_INLINE void *string_prefix_maps_heap_get(void)
+{
+	__u64 key = get_current_pid_tgid();
+	void *val = map_lookup_elem(&string_prefix_maps_heap, &key);
+	struct heap_ro_value *ro;
+	__u32 zidx = 0;
+
+	if (val)
+		return val;
+	ro = map_lookup_elem(&heap_ro_zero, &zidx);
+	if (!ro)
+		return 0;
+	if (map_update_elem(&string_prefix_maps_heap, &key, &ro->string_prefix_maps_heap, BPF_ANY))
+		return 0;
+	return map_lookup_elem(&string_prefix_maps_heap, &key);
+}
 #else
 FUNC_INLINE void *string_maps_heap_get(void)
 {
 	__u32 zero = 0;
 
 	return map_lookup_elem(&string_maps_heap, &zero);
+}
+
+FUNC_INLINE void *string_prefix_maps_heap_get(void)
+{
+	__u32 zero = 0;
+
+	return map_lookup_elem(&string_prefix_maps_heap, &zero);
 }
 #endif /* GENERIC_UPROBE || GENERIC_URETPROBE || GENERIC_USDT */
 
