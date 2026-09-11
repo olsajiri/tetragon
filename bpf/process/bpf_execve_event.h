@@ -400,6 +400,29 @@ execve_finalize_event(struct bpf_raw_tracepoint_args *ctx,
 #define EXECVE_RB_SIZE sizeof(struct msg_execve_event)
 
 /**
+ * event_execve_rb_finish() - set the real content size on an
+ * EXECVE_RB_SIZE ring buffer reservation and zero its unfilled tail, so no
+ * stale ring buffer memory from a previous, unrelated event is ever
+ * exposed. `event` is a flat pointer valid for the whole EXECVE_RB_SIZE
+ * reservation, so the zeroing is a plain byte loop from `used` (the real,
+ * variable content size) to EXECVE_RB_SIZE.
+ */
+FUNC_INLINE void
+execve_event_zero_tail(struct msg_execve_event *event)
+{
+	struct msg_process *p = &event->process;
+	__u64 size = offsetof(struct msg_execve_event, process) + p->size;
+	__u64 idx;
+
+	event->common.size = size;
+
+	bpf_for(idx, size, EXECVE_RB_SIZE)
+	{
+		((char *)event)[idx] = 0;
+	}
+}
+
+/**
  * event_execve_rb() - ring buffer reserve/commit variant of
  * execve_event_init() + execve_rate_check() + execve_finalize_event() combined.
  *
@@ -417,7 +440,6 @@ event_execve_rb(struct bpf_raw_tracepoint_args *ctx)
 {
 	struct msg_execve_event *event;
 	struct bpf_dynptr ptr;
-	struct msg_process *p;
 
 	event = event_ringbuf_reserve_dynptr(MSG_OP_EXECVE, EXECVE_RB_SIZE, &ptr);
 	if (!event)
@@ -436,25 +458,8 @@ event_execve_rb(struct bpf_raw_tracepoint_args *ctx)
 	 * is already fixed at reserve time and can't be resized down.
 	 */
 	execve_finalize_event(ctx, event);
-	p = &event->process;
+	execve_event_zero_tail(event);
 
-	/* Zero the unfilled tail of the reservation so no stale ring buffer
-	 * memory from a previous event is ever exposed, even though nothing
-	 * in the current parser reads past common.size. `event` is a flat
-	 * pointer valid for the whole EXECVE_RB_SIZE reservation, so this is
-	 * a plain byte loop.
-	 */
-	{
-		__u64 start = offsetof(struct msg_execve_event, process) + p->size;
-		__u64 idx;
-
-		bpf_for(idx, start, EXECVE_RB_SIZE)
-		{
-			((char *)event)[idx] = 0;
-		}
-	}
-
-	event->common.size = offsetof(struct msg_execve_event, process) + p->size;
 	ringbuf_submit_dynptr(&ptr, 0);
 	return 0;
 }
