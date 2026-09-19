@@ -351,4 +351,96 @@ d_path_local(const struct path *path, int *buflen, int *error)
 
 	return buffer;
 }
+
+struct cwd_size_data {
+	struct dentry *root_dentry;
+	struct vfsmount *root_mnt;
+	struct dentry *dentry;
+	struct vfsmount *vfsmnt;
+	struct mount *mnt;
+	int size;
+};
+
+FUNC_INLINE long cwd_size_read(struct cwd_size_data *data)
+{
+	struct qstr d_name;
+	struct dentry *parent;
+	struct dentry *vfsmnt_mnt_root;
+	struct dentry *dentry = data->dentry;
+	struct vfsmount *vfsmnt = data->vfsmnt;
+	struct mount *mnt = data->mnt;
+	__u32 namelen;
+
+	if (!(dentry != data->root_dentry || vfsmnt != data->root_mnt))
+		return 1; // resolved - no error tracking needed, see d_path_local_size()
+
+	probe_read(&vfsmnt_mnt_root, sizeof(vfsmnt_mnt_root),
+		   _(&vfsmnt->mnt_root));
+	if (dentry == vfsmnt_mnt_root || IS_ROOT(dentry)) {
+		struct mount *parent;
+
+		probe_read(&parent, sizeof(parent), _(&mnt->mnt_parent));
+
+		/* Global root? */
+		if (data->mnt != parent) {
+			probe_read(&data->dentry, sizeof(data->dentry),
+				   _(&mnt->mnt_mountpoint));
+			data->mnt = parent;
+			data->vfsmnt = _(&parent->mnt);
+			return 0;
+		}
+		return 1; // resolved
+	}
+	probe_read(&parent, sizeof(parent), _(&dentry->d_parent));
+	probe_read(&d_name, sizeof(d_name), _(&dentry->d_name));
+
+	// mirrors prepend_name()'s byte accounting (namelen clamp to 0xff,
+	// "+1" for the separating slash) without the bulk probe_read of the
+	// actual name bytes or any buffer bookkeeping.
+	namelen = d_name.len;
+	asm volatile("%[namelen] &= 0xff;\n"
+		     : [namelen] "+r"(namelen));
+	data->size += namelen + 1;
+
+	data->dentry = parent;
+	return 0;
+}
+
+FUNC_INLINE int
+d_path_local_size(const struct path *path)
+{
+	struct task_struct *task = (struct task_struct *)get_current_task();
+	struct cwd_size_data data = {};
+	struct fs_struct *fs;
+	struct path *root;
+	struct dentry *dentry;
+	int size = 0;
+	int idx;
+
+	probe_read(&fs, sizeof(fs), _(&task->fs));
+	root = _(&fs->root);
+
+	probe_read(&dentry, sizeof(dentry), _(&path->dentry));
+	if (d_unlinked(dentry))
+		size += 10; // " (deleted)", mirrors path_with_deleted()/prepend()
+
+	probe_read(&data.root_dentry, sizeof(data.root_dentry),
+		   _(&root->dentry));
+	probe_read(&data.root_mnt, sizeof(data.root_mnt), _(&root->mnt));
+	data.dentry = dentry;
+	probe_read(&data.vfsmnt, sizeof(data.vfsmnt), _(&path->mnt));
+	data.mnt = real_mount(data.vfsmnt);
+
+	bpf_for(idx, 0, PROBE_CWD_READ_ITERATIONS)
+	{
+		if (cwd_size_read(&data))
+			break;
+	}
+
+	size += data.size;
+	if (size > MAX_BUF_LEN)
+		size = MAX_BUF_LEN;
+
+	return size;
+}
 #endif /* __D_PATH__ */
