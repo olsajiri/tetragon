@@ -320,5 +320,6 @@ enum {
 // kfuncs
 extern int bpf_strnstr(const char *s1__ign, const char *s2__ign, size_t len) __weak __ksym;
 extern int bpf_strncasestr(const char *s1__ign, const char *s2__ign, size_t len) __weak __ksym;
+extern int bpf_strlen(const char *s__ign) __weak __ksym;
 
 #endif /* __BPF_API__ */
