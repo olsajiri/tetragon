@@ -171,6 +171,7 @@ func DeleteGlobMap(name string) {
 // sharedMapRefs tracks the number of sensors currently using each shared map,
 // without locking because sensor load/unload is serialized by the sensor manager.
 var sharedMapRefs = map[string]int{}
+var sharedMaps = map[string]*Map{}
 
 func sharedMapIncRef(pinPath string) int {
 	sharedMapRefs[pinPath]++
@@ -182,6 +183,7 @@ func sharedMapDecRef(pinPath string) bool {
 	last := sharedMapRefs[pinPath] <= 0
 	if last {
 		delete(sharedMapRefs, pinPath)
+		delete(sharedMaps, pinPath)
 	}
 	return last
 }
@@ -208,6 +210,11 @@ func mapBuilder(name, pinName string, ty MapType, owner bool, shared bool, lds .
 	for _, ld := range lds {
 		ld.PinMap[name] = m
 	}
+
+	if shared {
+		sharedMaps[pinName] = m
+	}
+
 	return m
 }
 

@@ -995,6 +995,10 @@ func doLoadProgram(
 			return m, true
 		}
 		m, ok = userMaps[name]
+		if ok {
+			return m, true
+		}
+		m, ok = sharedMaps[name]
 		return m, ok
 	}
 
