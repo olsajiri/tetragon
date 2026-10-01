@@ -177,6 +177,10 @@ func sharedMapIncRef(pinPath string) int {
 	return sharedMapRefs[pinPath]
 }
 
+func isSharedMapPinned(pinPath string) bool {
+	return sharedMapRefs[pinPath] > 0
+}
+
 func sharedMapDecRef(pinPath string) bool {
 	sharedMapRefs[pinPath]--
 	last := sharedMapRefs[pinPath] <= 0

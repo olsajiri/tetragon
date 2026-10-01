@@ -1060,6 +1060,14 @@ func doLoadProgram(
 			continue
 		}
 		defer m.Close()
+
+		// Shared map referenced but not declared by this sensor, take
+		// max entries from the pin. Declared ones are checked in loadMap.
+		if isSharedMapPinned(name) {
+			if ms, ok := spec.Maps[name]; ok {
+				ms.MaxEntries = m.MaxEntries()
+			}
+		}
 		pinnedMaps[name] = m
 	}
 
