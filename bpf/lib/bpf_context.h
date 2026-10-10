@@ -58,7 +58,7 @@ struct task_struct___preempt_rt {
 } __attribute__((preserve_access_index));
 
 /* Supported archs: x86,arm64,s390 */
-static inline __attribute__((always_inline)) int arch_get_preempt_count(void)
+FUNC_INLINE int arch_get_preempt_count(void)
 {
 #ifdef bpf_target_x86
 	if (bpf_ksym_exists(&__preempt_count))
@@ -74,7 +74,7 @@ static inline __attribute__((always_inline)) int arch_get_preempt_count(void)
 	return 0;
 }
 
-static inline __attribute__((always_inline)) unsigned long get_preempt_count(void)
+FUNC_INLINE unsigned long get_preempt_count(void)
 {
 	unsigned long pc = arch_get_preempt_count();
 
@@ -96,7 +96,7 @@ static inline __attribute__((always_inline)) unsigned long get_preempt_count(voi
  * - If x >= 1: the sum is at least 0x100000000, and the shift gives 1. The maximum, 0xffffffff + 0xffffffff, still
  *   shifts to 1.
  */
-static inline __attribute__((always_inline)) unsigned long bpf_ctx_nonzero(unsigned long x)
+FUNC_INLINE unsigned long bpf_ctx_nonzero(unsigned long x)
 {
 	/*
 	 * The empty asm makes x opaque to the compiler, so it has to
@@ -115,7 +115,7 @@ static inline __attribute__((always_inline)) unsigned long bpf_ctx_nonzero(unsig
  *  2 - hardirq context
  *  3 - NMI context
  */
-static inline __attribute__((always_inline)) unsigned char interrupt_context_level(void)
+FUNC_INLINE unsigned char interrupt_context_level(void)
 {
 	unsigned long pc = get_preempt_count();
 	unsigned long hardirq_mask, nmi_mask;
