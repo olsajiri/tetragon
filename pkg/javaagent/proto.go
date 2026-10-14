@@ -139,7 +139,11 @@ func DecodeHook(data []byte) (Hook, error) {
 	if len(data) < 14 {
 		return Hook{}, fmt.Errorf("truncated Java hook")
 	}
-	h := Hook{PolicyID: binary.LittleEndian.Uint32(data[0:4]), HookID: binary.LittleEndian.Uint32(data[4:8]), Kind: data[8]}
+	h := Hook{
+		PolicyID: binary.LittleEndian.Uint32(data[0:4]),
+		HookID:   binary.LittleEndian.Uint32(data[4:8]),
+		Kind:     data[8],
+	}
 	if h.Kind != HookClass && h.Kind != HookPrefix {
 		return Hook{}, fmt.Errorf("invalid Java hook kind %d", h.Kind)
 	}

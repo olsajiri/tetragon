@@ -28,7 +28,8 @@ type Ring struct {
 // NewRing creates a memfd-backed ring with a power-of-two data area.
 func NewRing(dataSize uint64) (*Ring, error) {
 	maxInt := uint64(^uint(0) >> 1)
-	if dataSize < minRingDataSize || dataSize&(dataSize-1) != 0 || dataSize > maxInt-uint64(RingHdrSize) {
+	if dataSize < minRingDataSize || dataSize&(dataSize-1) != 0 ||
+		dataSize > maxInt-uint64(RingHdrSize) {
 		return nil, fmt.Errorf("Java ring data size must be a power of two >= %d", minRingDataSize)
 	}
 	fd, err := unix.MemfdCreate("tetragon-java-ring", unix.MFD_CLOEXEC|unix.MFD_ALLOW_SEALING)
@@ -93,7 +94,8 @@ func (r *Ring) Drain(callback func(Record) error) error {
 	dataSize := binary.LittleEndian.Uint64(r.data[ringOffDataSize:])
 	if binary.LittleEndian.Uint32(r.data[ringOffMagic:]) != RingMagic ||
 		binary.LittleEndian.Uint32(r.data[ringOffVersion:]) != RingVersion ||
-		dataSize == 0 || dataSize&(dataSize-1) != 0 || uint64(len(r.data)) != uint64(RingHdrSize)+dataSize {
+		dataSize == 0 || dataSize&(dataSize-1) != 0 ||
+		uint64(len(r.data)) != uint64(RingHdrSize)+dataSize {
 		return errors.New("invalid Java ring header")
 	}
 	producer := (*uint64)(unsafe.Pointer(&r.data[ringOffProducerPos]))

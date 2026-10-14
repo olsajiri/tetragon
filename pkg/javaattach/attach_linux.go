@@ -42,7 +42,10 @@ func LoadNativeAgent(pid int, libraryPath, options string) error {
 	if err != nil {
 		return fmt.Errorf("resolve target PID namespace: %w", err)
 	}
-	socket := filepath.Join("/proc", strconv.Itoa(pid), "root", "tmp", ".java_pid"+strconv.Itoa(attachPID))
+	socket := filepath.Join(
+		"/proc", strconv.Itoa(pid), "root", "tmp",
+		".java_pid"+strconv.Itoa(attachPID),
+	)
 	conn, err := net.DialTimeout("unix", socket, 250*time.Millisecond)
 	if err != nil {
 		trigger, triggerErr := requestListener(pid, attachPID)
@@ -96,7 +99,11 @@ func loadRequest(conn net.Conn, libraryPath, options string) error {
 	}
 	message, _ := io.ReadAll(io.LimitReader(response, 4097))
 	if status != 0 {
-		return fmt.Errorf("HotSpot rejected JVMTI agent (status %d): %s", status, strings.TrimSpace(string(message)))
+		return fmt.Errorf(
+			"HotSpot rejected JVMTI agent (status %d): %s",
+			status,
+			strings.TrimSpace(string(message)),
+		)
 	}
 	if strings.Contains(strings.ToLower(string(message)), "return code: -1") {
 		return fmt.Errorf("JVMTI agent reported failure: %s", strings.TrimSpace(string(message)))
