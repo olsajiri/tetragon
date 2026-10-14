@@ -32,12 +32,22 @@ install -D -m 0755 "$ROOT/pkg/javaattach/agent/tetragon-jvmti.so" \
 
 javac -d "$RUN_DIR" "$ROOT/examples/java/TetragonJavaDemo.java"
 
+# JDKs that support this option require it to permit dynamic agent loading.
+# On JDKs where it is not recognized, keep the JVM's default behavior.
+JAVA_AGENT_FLAGS=()
+if java -XX:+EnableDynamicAgentLoading -version >/dev/null 2>&1; then
+    JAVA_AGENT_FLAGS=(-XX:+EnableDynamicAgentLoading)
+fi
+
 # Run the JVM as the invoking user when called through sudo. Tetragon remains
 # root so it can attach to the JVM and load its BPF programs.
 if [[ -n "${SUDO_USER:-}" && "$SUDO_USER" != root ]] && command -v runuser >/dev/null 2>&1; then
-    runuser -u "$SUDO_USER" -- java -cp "$RUN_DIR" TetragonJavaDemo tetragon-java-demo &
+    runuser -u "$SUDO_USER" -- \
+        java "${JAVA_AGENT_FLAGS[@]}" -cp "$RUN_DIR" \
+        TetragonJavaDemo tetragon-java-demo &
 else
-    java -cp "$RUN_DIR" TetragonJavaDemo tetragon-java-demo &
+    java "${JAVA_AGENT_FLAGS[@]}" -cp "$RUN_DIR" \
+        TetragonJavaDemo tetragon-java-demo &
 fi
 JAVA_PID=$!
 echo "Started demo JVM (pid $JAVA_PID); policy target token: tetragon-java-demo"

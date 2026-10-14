@@ -11,7 +11,9 @@ The script builds Tetragon, its BPF programs, and the native JVMTI agent. It
 installs the agent at `/usr/lib/tetragon/tetragon-jvmti.so`, starts
 `TetragonJavaDemo`, and launches Tetragon with
 [`demo-tracingpolicy.yaml`](demo-tracingpolicy.yaml). Tetragon prints events
-for calls to `TetragonJavaDemo.work`. Press Ctrl-C to stop the demo.
+for calls to `TetragonJavaDemo.work`. The script enables dynamic agent loading
+when the installed JDK supports the `-XX:+EnableDynamicAgentLoading` option.
+Press Ctrl-C to stop the demo.
 
 The policy selects the target JVM with
 `spec.java.targets.processArgsContains`. It requires the token
