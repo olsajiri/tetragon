@@ -15,6 +15,9 @@ type policyHandler struct{}
 
 func init() { sensors.RegisterPolicyHandlerAtInit("java", policyHandler{}) }
 
-func (policyHandler) PolicyHandler(_ tracingpolicy.TracingPolicy, _ policyfilter.PolicyID) (sensors.SensorIface, error) {
+func (policyHandler) PolicyHandler(
+	_ tracingpolicy.TracingPolicy,
+	_ policyfilter.PolicyID,
+) (sensors.SensorIface, error) {
 	return nil, nil
 }

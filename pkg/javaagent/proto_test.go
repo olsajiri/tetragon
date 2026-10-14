@@ -11,7 +11,16 @@ import (
 )
 
 func TestControlMessageAndHookRoundTrip(t *testing.T) {
-	want := Hook{PolicyID: 7, HookID: 2, Kind: HookPrefix, Class: "example/", Methods: []HookMethod{{Name: "run", Descriptor: "(I)V"}, {Name: "run", Descriptor: ""}}}
+	want := Hook{
+		PolicyID: 7,
+		HookID:   2,
+		Kind:     HookPrefix,
+		Class:    "example/",
+		Methods: []HookMethod{
+			{Name: "run", Descriptor: "(I)V"},
+			{Name: "run", Descriptor: ""},
+		},
+	}
 	payload, err := EncodeHook(want)
 	require.NoError(t, err)
 	msg, err := (Header{Type: MsgHookAdd, Seq: 19}).Message(payload)
@@ -93,10 +102,21 @@ func TestRingDrainRejectsOverrun(t *testing.T) {
 
 func TestMethodDefinitionAndEntrySubmission(t *testing.T) {
 	var got []any
-	s := NewServer("/unused", func(pid, tid uint32, ktime, methodID uint64, class, method, desc, policy, message string, tags []string) {
+	s := NewServer("/unused", func(
+		pid, tid uint32,
+		ktime, methodID uint64,
+		class, method, desc, policy, message string,
+		tags []string,
+	) {
 		got = append(got, []any{pid, tid, ktime, methodID, class, method, desc, policy, message, tags})
 	})
-	s.policies[3] = Policy{ID: 3, Name: "policy", Meta: map[uint32]HookMetadata{4: {Message: "hit", Tags: []string{"one"}}}}
+	s.policies[3] = Policy{
+		ID:   3,
+		Name: "policy",
+		Meta: map[uint32]HookMetadata{
+			4: {Message: "hit", Tags: []string{"one"}},
+		},
+	}
 	c := &session{server: s, pid: 123, methods: make(map[uint64]methodDefinition)}
 	def := make([]byte, 40) // 24 bytes fixed, 9 bytes of strings, and padding.
 	binary.LittleEndian.PutUint64(def[0:8], 0x55)

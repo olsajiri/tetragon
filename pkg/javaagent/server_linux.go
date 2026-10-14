@@ -26,7 +26,12 @@ import (
 
 // EventSink receives decoded method-entry records. PID is authenticated from
 // SO_PEERCRED; it is never accepted from agent-provided record data.
-type EventSink func(pid, tid uint32, ktime, methodID uint64, className, methodName, descriptor, policyName, message string, tags []string)
+type EventSink func(
+	pid, tid uint32,
+	ktime, methodID uint64,
+	className, methodName, descriptor, policyName, message string,
+	tags []string,
+)
 
 type Policy struct {
 	ID    uint32
@@ -69,7 +74,13 @@ type methodDefinition struct {
 }
 
 func NewServer(path string, sink EventSink) *Server {
-	return &Server{path: path, sink: sink, policies: make(map[uint32]Policy), sessions: make(map[*session]struct{}), authorized: make(map[uint32]map[uint32]uint64)}
+	return &Server{
+		path:       path,
+		sink:       sink,
+		policies:   make(map[uint32]Policy),
+		sessions:   make(map[*session]struct{}),
+		authorized: make(map[uint32]map[uint32]uint64),
+	}
 }
 
 // AllowProcess authorizes the given policy to attach one process identity to
@@ -213,7 +224,14 @@ func (s *Server) handle(conn *net.UnixConn) {
 	if err != nil {
 		return
 	}
-	c := &session{server: s, conn: conn, pid: uint32(pid), ring: ring, methods: make(map[uint64]methodDefinition), applied: make(map[uint32]bool)}
+	c := &session{
+		server:  s,
+		conn:    conn,
+		pid:     uint32(pid),
+		ring:    ring,
+		methods: make(map[uint64]methodDefinition),
+		applied: make(map[uint32]bool),
+	}
 	s.mu.Lock()
 	s.sessions[c] = struct{}{}
 	policies := make([]Policy, 0, len(s.policies))
@@ -258,7 +276,11 @@ func peerPID(conn *net.UnixConn) (int, error) {
 	}
 	var cred *unix.Ucred
 	var inner error
-	err = raw.Control(func(fd uintptr) { cred, inner = unix.GetsockoptUcred(int(fd), unix.SOL_SOCKET, unix.SO_PEERCRED) })
+	err = raw.Control(func(fd uintptr) {
+		cred, inner = unix.GetsockoptUcred(
+			int(fd), unix.SOL_SOCKET, unix.SO_PEERCRED,
+		)
+	})
 	if err != nil {
 		return 0, err
 	}
@@ -400,9 +422,19 @@ func (c *session) drain(ctx context.Context) error {
 		notify := (*uint32)(unsafe.Pointer(&c.ring.data[ringOffNotify]))
 		waiting := (*uint32)(unsafe.Pointer(&c.ring.data[ringOffConsumerWaiting]))
 		atomic.StoreUint32(waiting, 1)
-		if atomic.LoadUint64((*uint64)(unsafe.Pointer(&c.ring.data[ringOffProducerPos]))) == atomic.LoadUint64((*uint64)(unsafe.Pointer(&c.ring.data[ringOffConsumerPos]))) {
+		producerPos := (*uint64)(unsafe.Pointer(&c.ring.data[ringOffProducerPos]))
+		consumerPos := (*uint64)(unsafe.Pointer(&c.ring.data[ringOffConsumerPos]))
+		if atomic.LoadUint64(producerPos) == atomic.LoadUint64(consumerPos) {
 			ts := unix.NsecToTimespec(int64(100 * time.Millisecond))
-			_, _, errno := unix.Syscall6(unix.SYS_FUTEX, uintptr(unsafe.Pointer(notify)), 0, uintptr(atomic.LoadUint32(notify)), uintptr(unsafe.Pointer(&ts)), 0, 0)
+			_, _, errno := unix.Syscall6(
+				unix.SYS_FUTEX,
+				uintptr(unsafe.Pointer(notify)),
+				0,
+				uintptr(atomic.LoadUint32(notify)),
+				uintptr(unsafe.Pointer(&ts)),
+				0,
+				0,
+			)
 			if errno != 0 && errno != unix.EAGAIN && errno != unix.EINTR && errno != unix.ETIMEDOUT {
 				return errno
 			}
@@ -431,7 +463,14 @@ func (c *session) methodDef(data []byte) error {
 			return fmt.Errorf("nonzero Java method definition padding")
 		}
 	}
-	c.methods[key] = methodDefinition{key: key, policyID: pol, hookID: hook, className: string(data[24 : 24+cl]), methodName: string(data[24+cl : 24+cl+nl]), descriptor: string(data[24+cl+nl : used])}
+	c.methods[key] = methodDefinition{
+		key:        key,
+		policyID:   pol,
+		hookID:     hook,
+		className:  string(data[24 : 24+cl]),
+		methodName: string(data[24+cl : 24+cl+nl]),
+		descriptor: string(data[24+cl+nl : used]),
+	}
 	return nil
 }
 
@@ -453,7 +492,18 @@ func (c *session) methodEntry(data []byte) error {
 		return nil
 	}
 	meta := p.Meta[def.hookID]
-	c.server.sink(c.pid, tid, ktime, stableMethodID(def.className, def.methodName, def.descriptor), def.className, def.methodName, def.descriptor, p.Name, meta.Message, meta.Tags)
+	c.server.sink(
+		c.pid,
+		tid,
+		ktime,
+		stableMethodID(def.className, def.methodName, def.descriptor),
+		def.className,
+		def.methodName,
+		def.descriptor,
+		p.Name,
+		meta.Message,
+		meta.Tags,
+	)
 	return nil
 }
 

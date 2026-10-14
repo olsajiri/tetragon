@@ -18,7 +18,14 @@ import (
 func TestPolicyHandlerRejectsPatches(t *testing.T) {
 	policy := &api.TracingPolicy{
 		ObjectMeta: metav1.ObjectMeta{Name: "patch-policy"},
-		Spec:       api.TracingPolicySpec{Java: &api.JavaSpec{Patches: []api.JavaPatch{{Class: "com.example.Foo", ClassFile: []byte{0xca, 0xfe, 0xba, 0xbe}}}}},
+		Spec: api.TracingPolicySpec{
+			Java: &api.JavaSpec{
+				Patches: []api.JavaPatch{{
+					Class:     "com.example.Foo",
+					ClassFile: []byte{0xca, 0xfe, 0xba, 0xbe},
+				}},
+			},
+		},
 	}
 	_, err := (policyHandler{}).PolicyHandler(policy, policyfilter.NoFilterID)
 	require.ErrorContains(t, err, "patches are not supported")

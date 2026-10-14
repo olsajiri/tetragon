@@ -60,13 +60,31 @@ var (
 	attachedVMs = make(map[processIdentity]int)
 )
 
-func init() { sensors.RegisterPolicyHandlerAtInit(sensorName, policyHandler{}) }
+func init() {
+	sensors.RegisterPolicyHandlerAtInit(sensorName, policyHandler{})
+}
 
 func ensureServer() *javaagent.Server {
 	serverOnce.Do(func() {
 		path := optionSocketPath()
-		agentServer = javaagent.NewServer(path, func(pid, tid uint32, ktime, methodID uint64, className, methodName, descriptor, policyName, message string, tags []string) {
-			observer.SubmitEvent(&grpctracing.MsgJavaEvent{Pid: pid, Tid: tid, Ktime: ktime, MethodID: methodID, ClassName: className, MethodName: methodName, Descriptor: descriptor, PolicyName: policyName, Message: message, Tags: tags})
+		agentServer = javaagent.NewServer(path, func(
+			pid, tid uint32,
+			ktime, methodID uint64,
+			className, methodName, descriptor, policyName, message string,
+			tags []string,
+		) {
+			observer.SubmitEvent(&grpctracing.MsgJavaEvent{
+				Pid:        pid,
+				Tid:        tid,
+				Ktime:      ktime,
+				MethodID:   methodID,
+				ClassName:  className,
+				MethodName: methodName,
+				Descriptor: descriptor,
+				PolicyName: policyName,
+				Message:    message,
+				Tags:       tags,
+			})
 		})
 		go func() {
 			if err := agentServer.Listen(context.Background()); err != nil {
@@ -86,7 +104,10 @@ func optionSocketPath() string {
 	return "/var/run/tetragon/java.sock"
 }
 
-func (policyHandler) PolicyHandler(policy tracingpolicy.TracingPolicy, filterID policyfilter.PolicyID) (sensors.SensorIface, error) {
+func (policyHandler) PolicyHandler(
+	policy tracingpolicy.TracingPolicy,
+	filterID policyfilter.PolicyID,
+) (sensors.SensorIface, error) {
 	if filterID != policyfilter.NoFilterID {
 		return nil, errors.New("Java policies do not support policy filtering")
 	}
@@ -95,7 +116,9 @@ func (policyHandler) PolicyHandler(policy tracingpolicy.TracingPolicy, filterID 
 		return nil, nil
 	}
 	if len(spec.Patches) != 0 {
-		return nil, errors.New("Java class patches are not supported by the JVMTI method monitoring agent")
+		return nil, errors.New(
+			"Java class patches are not supported by the JVMTI method monitoring agent",
+		)
 	}
 	if len(spec.Hooks) == 0 {
 		return nil, errors.New("Java policy needs at least one method hook")
@@ -117,7 +140,11 @@ func (policyHandler) PolicyHandler(policy tracingpolicy.TracingPolicy, filterID 
 			}
 		}
 	}
-	agentPolicy := javaagent.Policy{ID: uint32(filterID), Name: tracingpolicy.TpLongname(policy), Meta: make(map[uint32]javaagent.HookMetadata)}
+	agentPolicy := javaagent.Policy{
+		ID:   uint32(filterID),
+		Name: tracingpolicy.TpLongname(policy),
+		Meta: make(map[uint32]javaagent.HookMetadata),
+	}
 	// Policy IDs used by the JVMTI agent must be unique even when policy
 	// filtering is disabled (NoFilterID is zero). Sensor manager allocates a
 	// stable per-policy ID separately from the filter ID; use a local hash for
@@ -138,14 +165,34 @@ func (policyHandler) PolicyHandler(policy tracingpolicy.TracingPolicy, filterID 
 		for _, m := range hook.Methods {
 			methods = append(methods, javaagent.HookMethod{Name: m.Name, Descriptor: m.Descriptor})
 		}
-		agentPolicy.Hooks = append(agentPolicy.Hooks, javaagent.Hook{PolicyID: agentPolicy.ID, HookID: uint32(i), Kind: kind, Class: class, Methods: methods})
-		agentPolicy.Meta[uint32(i)] = javaagent.HookMetadata{Message: hook.Message, Tags: append([]string(nil), hook.Tags...)}
+		agentPolicy.Hooks = append(agentPolicy.Hooks, javaagent.Hook{
+			PolicyID: agentPolicy.ID,
+			HookID:   uint32(i),
+			Kind:     kind,
+			Class:    class,
+			Methods:  methods,
+		})
+		agentPolicy.Meta[uint32(i)] = javaagent.HookMetadata{
+			Message: hook.Message,
+			Tags:    append([]string(nil), hook.Tags...),
+		}
 	}
 	args := []string(nil)
 	if spec.Targets != nil {
 		args = append(args, spec.Targets.ProcessArgsContains...)
 	}
-	return &javaSensor{Sensor: &sensors.Sensor{Name: sensorName + ":" + policy.TpName(), Policy: policy.TpName(), Namespace: policy.TpNamespace()}, policy: agentPolicy, executables: executables, argsContain: args, active: make(map[int]processIdentity), lastAttempt: make(map[int]time.Time)}, nil
+	return &javaSensor{
+		Sensor: &sensors.Sensor{
+			Name:      sensorName + ":" + policy.TpName(),
+			Policy:    policy.TpName(),
+			Namespace: policy.TpNamespace(),
+		},
+		policy:      agentPolicy,
+		executables: executables,
+		argsContain: args,
+		active:      make(map[int]processIdentity),
+		lastAttempt: make(map[int]time.Time),
+	}, nil
 }
 
 func policyID(policy tracingpolicy.TracingPolicy) uint32 {
@@ -292,12 +339,19 @@ func (s *javaSensor) attach(target processIdentity) error {
 		return err
 	}
 	procRoot := filepath.Join("/proc", strconv.Itoa(target.pid), "root", "tmp")
-	path := filepath.Join(procRoot, fmt.Sprintf(".tetragon-jvmti-%d-%d.so", target.pid, target.startTicks))
+	path := filepath.Join(
+		procRoot,
+		fmt.Sprintf(".tetragon-jvmti-%d-%d.so", target.pid, target.startTicks),
+	)
 	if err := writeAgentFile(path, data); err != nil {
 		return err
 	}
 	defer os.Remove(path)
-	return javaattach.LoadNativeAgent(target.pid, filepath.Join("/tmp", filepath.Base(path)), optionSocketPath())
+	return javaattach.LoadNativeAgent(
+		target.pid,
+		filepath.Join("/tmp", filepath.Base(path)),
+		optionSocketPath(),
+	)
 }
 
 func writeAgentFile(path string, data []byte) error {
@@ -347,7 +401,10 @@ func (s *javaSensor) Destroy(unpin bool) error {
 	return nil
 }
 
-func matchingProcesses(executables map[string]struct{}, argsContain []string) ([]processIdentity, error) {
+func matchingProcesses(
+	executables map[string]struct{},
+	argsContain []string,
+) ([]processIdentity, error) {
 	entries, err := os.ReadDir("/proc")
 	if err != nil {
 		return nil, err
