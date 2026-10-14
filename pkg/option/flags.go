@@ -50,11 +50,12 @@ const (
 
 	KeyEnablePodAnnotations = "enable-pod-annotations"
 
-	KeyMetricsServer      = "metrics-server"
-	KeyEnableEventMetrics = "enable-event-metrics"
-	KeyMetricsLabelFilter = "metrics-label-filter"
-	KeyServerAddress      = "server-address"
-	KeyGopsAddr           = "gops-address"
+	KeyMetricsServer       = "metrics-server"
+	KeyEnableEventMetrics  = "enable-event-metrics"
+	KeyMetricsLabelFilter  = "metrics-label-filter"
+	KeyServerAddress       = "server-address"
+	KeyGopsAddr            = "gops-address"
+	KeyJavaAgentSocketPath = "java-agent-socket-path"
 
 	KeyEnableProcessEnvironmentVariables = "enable-process-environment-variables"
 
@@ -255,6 +256,7 @@ func ReadAndSetFlags() error {
 	}
 
 	Config.GopsAddr = viper.GetString(KeyGopsAddr)
+	Config.JavaAgentSocketPath = viper.GetString(KeyJavaAgentSocketPath)
 
 	logLevel := viper.GetString(KeyLogLevel)
 	logFormat := viper.GetString(KeyLogFormat)
@@ -548,6 +550,7 @@ func AddFlags(flags *pflag.FlagSet) {
 	flags.String(KeyMetricsLabelFilter, "namespace,workload,pod,binary", "Comma-separated list of enabled metrics labels. Unknown labels will be ignored.")
 	flags.String(KeyServerAddress, "localhost:54321", "gRPC server address (e.g. 'localhost:54321' or 'unix:///var/run/tetragon/tetragon.sock'). An empty address disables the gRPC server. WARNING: Exposing gRPC on a TCP socket without TLS client verification exposes Tetragon to unprivileged users on the host or with network access.")
 	flags.String(KeyGopsAddr, "", "gops server address (e.g. 'localhost:8118'). Disabled by default")
+	flags.String(KeyJavaAgentSocketPath, "/var/run/tetragon/java.sock", "Unix socket used by the JVMTI Java monitoring agent")
 	flags.Bool(KeyEnableProcessCred, false, "Enable process_cred events")
 	flags.Bool(KeyEnableProcessNs, false, "Enable namespace information in process_exec and process_kprobe events")
 	flags.Uint(KeyEventQueueSize, 10000, "Set the size of the internal event queue.")
