@@ -4,6 +4,8 @@
 package unloader
 
 import (
+	"errors"
+	"fmt"
 	"slices"
 	"strings"
 
@@ -56,10 +58,13 @@ type ProgUnloader struct {
 }
 
 func (pu ProgUnloader) Unload(unpin bool) error {
+	var ret error
 	if unpin {
-		pu.Prog.Unpin()
+		if err := pu.Prog.Unpin(); err != nil {
+			ret = errors.Join(ret, fmt.Errorf("unpin program: %w", err))
+		}
 	}
-	return pu.Prog.Close()
+	return errors.Join(ret, pu.Prog.Close())
 }
 
 // ProgUnloader unpins and closes a BPF program.
@@ -68,8 +73,11 @@ type LinkUnloader struct {
 }
 
 func (lu LinkUnloader) Unload(unpin bool) error {
+	var ret error
 	if unpin {
-		lu.Link.Unpin()
+		if err := lu.Link.Unpin(); err != nil {
+			ret = errors.Join(ret, fmt.Errorf("unpin link: %w", err))
+		}
 	}
-	return lu.Link.Close()
+	return errors.Join(ret, lu.Link.Close())
 }
