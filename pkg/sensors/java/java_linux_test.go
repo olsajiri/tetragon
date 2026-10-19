@@ -6,6 +6,8 @@
 package java
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -59,4 +61,59 @@ func TestJavaSensorUnloadUnloadsEmbeddedSensor(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.False(t, base.Loaded, "embedded sensor Unload should clear Loaded")
+}
+
+func TestResolveNativeAgentPath(t *testing.T) {
+	writeAgent := func(path string) {
+		t.Helper()
+		require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+		require.NoError(t, os.WriteFile(path, []byte("agent"), 0o644))
+	}
+
+	t.Run("configured path takes precedence", func(t *testing.T) {
+		workingDir := t.TempDir()
+		configuredPath := filepath.Join(workingDir, "custom-agent.so")
+		writeAgent(configuredPath)
+		writeAgent(filepath.Join(workingDir, sourceNativeAgentPath))
+
+		path, err := resolveNativeAgentPathFrom(configuredPath, workingDir, filepath.Join(workingDir, "installed.so"))
+		require.NoError(t, err)
+		require.Equal(t, configuredPath, path)
+	})
+
+	t.Run("missing configured path fails", func(t *testing.T) {
+		workingDir := t.TempDir()
+		writeAgent(filepath.Join(workingDir, sourceNativeAgentPath))
+
+		_, err := resolveNativeAgentPathFrom(filepath.Join(workingDir, "missing.so"), workingDir, filepath.Join(workingDir, "installed.so"))
+		require.ErrorContains(t, err, "configured JVMTI agent")
+	})
+
+	t.Run("source tree fallback", func(t *testing.T) {
+		workingDir := t.TempDir()
+		sourcePath := filepath.Join(workingDir, sourceNativeAgentPath)
+		writeAgent(sourcePath)
+
+		path, err := resolveNativeAgentPathFrom("", workingDir, filepath.Join(workingDir, "installed.so"))
+		require.NoError(t, err)
+		require.Equal(t, sourcePath, path)
+	})
+
+	t.Run("installed path fallback", func(t *testing.T) {
+		workingDir := t.TempDir()
+		installedPath := filepath.Join(workingDir, "installed.so")
+		writeAgent(installedPath)
+
+		path, err := resolveNativeAgentPathFrom("", workingDir, installedPath)
+		require.NoError(t, err)
+		require.Equal(t, installedPath, path)
+	})
+
+	t.Run("missing fallback paths fail", func(t *testing.T) {
+		workingDir := t.TempDir()
+		installedPath := filepath.Join(workingDir, "installed.so")
+
+		_, err := resolveNativeAgentPathFrom("", workingDir, installedPath)
+		require.ErrorContains(t, err, "JVMTI agent unavailable")
+	})
 }

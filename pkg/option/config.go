@@ -57,6 +57,7 @@ type config struct {
 
 	GopsAddr string
 
+	JavaAgentPath       string
 	JavaAgentSocketPath string
 
 	// On start used to store bpf prefix for --bpf-dir option,

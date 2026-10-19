@@ -194,6 +194,8 @@ options:
       shorthand: h
       default_value: "false"
       usage: help for tetragon
+    - name: java-agent-path
+      usage: Path to the JVMTI Java monitoring agent shared library
     - name: java-agent-socket-path
       default_value: /var/run/tetragon/java.sock
       usage: Unix socket used by the JVMTI Java monitoring agent
