@@ -29,10 +29,11 @@ import (
 )
 
 const (
-	sensorName      = "java"
-	nativeAgentPath = "/usr/lib/tetragon/tetragon-jvmti.so"
-	scanInterval    = time.Second
-	retryInterval   = 5 * time.Second
+	sensorName               = "java"
+	installedNativeAgentPath = "/usr/lib/tetragon/tetragon-jvmti.so"
+	sourceNativeAgentPath    = "pkg/javaattach/agent/tetragon-jvmti.so"
+	scanInterval             = time.Second
+	retryInterval            = 5 * time.Second
 )
 
 type policyHandler struct{}
@@ -45,6 +46,7 @@ type javaSensor struct {
 	*sensors.Sensor
 	mu           sync.Mutex
 	policy       javaagent.Policy
+	agentPath    string
 	agentEnabled bool
 	executables  map[string]struct{}
 	argsContain  []string
@@ -105,6 +107,36 @@ func optionSocketPath() string {
 	return "/var/run/tetragon/java.sock"
 }
 
+func resolveNativeAgentPath(configuredPath string) (string, error) {
+	workingDir, _ := os.Getwd()
+	return resolveNativeAgentPathFrom(configuredPath, workingDir, installedNativeAgentPath)
+}
+
+func resolveNativeAgentPathFrom(configuredPath, workingDir, installedPath string) (string, error) {
+	if configuredPath != "" {
+		path := configuredPath
+		if !filepath.IsAbs(path) {
+			path = filepath.Join(workingDir, path)
+		}
+		path = filepath.Clean(path)
+		if _, err := os.Stat(path); err != nil {
+			return "", fmt.Errorf("configured JVMTI agent %q unavailable: %w", path, err)
+		}
+		return path, nil
+	}
+
+	if workingDir != "" {
+		sourcePath := filepath.Join(workingDir, sourceNativeAgentPath)
+		if _, err := os.Stat(sourcePath); err == nil {
+			return sourcePath, nil
+		}
+	}
+	if _, err := os.Stat(installedPath); err == nil {
+		return installedPath, nil
+	}
+	return "", fmt.Errorf("JVMTI agent unavailable: checked source path %q and installed path %q", filepath.Join(workingDir, sourceNativeAgentPath), installedPath)
+}
+
 func (policyHandler) PolicyHandler(
 	policy tracingpolicy.TracingPolicy,
 	filterID policyfilter.PolicyID,
@@ -139,9 +171,12 @@ func (policyHandler) PolicyHandler(
 		return nil, errors.New("Java policy without method hooks needs at least one executable target")
 	}
 	agentEnabled := len(spec.Hooks) != 0
+	agentPath := ""
 	if agentEnabled {
-		if _, err := os.Stat(nativeAgentPath); err != nil {
-			return nil, fmt.Errorf("JVMTI agent %q unavailable: %w", nativeAgentPath, err)
+		var err error
+		agentPath, err = resolveNativeAgentPath(option.Config.JavaAgentPath)
+		if err != nil {
+			return nil, err
 		}
 	}
 	agentPolicy := javaagent.Policy{
@@ -192,6 +227,7 @@ func (policyHandler) PolicyHandler(
 	return &javaSensor{
 		Sensor:       bpfSensor,
 		policy:       agentPolicy,
+		agentPath:    agentPath,
 		agentEnabled: agentEnabled,
 		executables:  executables,
 		argsContain:  args,
@@ -362,7 +398,7 @@ func (s *javaSensor) attach(target processIdentity) error {
 	if current.startTicks != target.startTicks {
 		return errors.New("process exited or PID was reused")
 	}
-	data, err := os.ReadFile(nativeAgentPath)
+	data, err := os.ReadFile(s.agentPath)
 	if err != nil {
 		return err
 	}
