@@ -45,7 +45,8 @@ PROGS = sigkill-tester \
 	pclntab-unstripped \
 	pclntab-stripped \
 	null-mount \
-	resolve-nested-anon-struct
+	resolve-nested-anon-struct \
+	java-tool-options
 
 LIBS =	libuprobe.so \
 	libtester.so
