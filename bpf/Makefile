@@ -92,6 +92,7 @@ PROCESS += bpf_generic_kprobe_v61.o bpf_generic_retkprobe_v61.o \
 	   bpf_multi_kprobe_v61.o bpf_multi_retkprobe_v61.o \
 	   bpf_generic_tracepoint_v61.o \
 	   bpf_generic_uprobe_v61.o bpf_generic_retuprobe_v61.o \
+	   bpf_java_start_v61.o \
 	   bpf_multi_uprobe_v61.o bpf_multi_retuprobe_v61.o \
 	   bpf_generic_rawtp_v61.o \
 	   bpf_generic_usdt_v61.o \
@@ -187,6 +188,10 @@ $(DEPSDIR)bpf_multi_usdt_$$(VAR).d: $(PROCESSDIR)bpf_generic_usdt.c
 ifneq (,$(filter $1,v53 v511 v61))
 $(DEPSDIR)bpf_execve_event_$1.d: $(PROCESSDIR)bpf_execve_event_notc.c
 	$$(call rule_d,$$(CFLAGS_$1))
+endif
+
+ifeq ($1,v61)
+$(DEPSDIR)bpf_java_start_v61.d: $(PROCESSDIR)bpf_java_start.c
 endif
 
 # Object build rule for VARIANT objects
