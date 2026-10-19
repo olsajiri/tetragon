@@ -1644,7 +1644,9 @@ spec:
                       executables:
                         description: |-
                           Exact executable paths (as seen by the process in /proc/<pid>/exe)
-                          of the JVMs the policy applies to.
+                          of JVMs the policy applies to. Before startup, Tetragon enables the
+                          HotSpot attach interface by setting JAVA_TOOL_OPTIONS to the
+                          required flags, replacing its prior value.
                         items:
                           type: string
                         type: array

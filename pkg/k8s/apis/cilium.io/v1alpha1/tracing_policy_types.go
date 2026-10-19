@@ -173,7 +173,9 @@ type JavaSpec struct {
 type JavaTargets struct {
 	// +kubebuilder:validation:Optional
 	// Exact executable paths (as seen by the process in /proc/<pid>/exe)
-	// of the JVMs the policy applies to.
+	// of JVMs the policy applies to. Tetragon enables the HotSpot attach
+	// interface before startup for these executables by setting
+	// JAVA_TOOL_OPTIONS to the required HotSpot flags (replacing its prior value).
 	Executables []string `json:"executables,omitempty"`
 	// +kubebuilder:validation:Optional
 	// Every token must occur as a substring of one of the process arguments.

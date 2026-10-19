@@ -2551,7 +2551,9 @@ applies to all HotSpot JVMs (within the policy pod/container selectors).
         <td>[]string</td>
         <td>
           Exact executable paths (as seen by the process in /proc/<pid>/exe)
-of the JVMs the policy applies to.<br/>
+of JVMs the policy applies to. Before startup, Tetragon enables the HotSpot
+attach interface by setting JAVA_TOOL_OPTIONS to the required flags, replacing
+its prior value.<br/>
         </td>
         <td>false</td>
       </tr><tr>
@@ -15629,7 +15631,9 @@ applies to all HotSpot JVMs (within the policy pod/container selectors).
         <td>[]string</td>
         <td>
           Exact executable paths (as seen by the process in /proc/<pid>/exe)
-of the JVMs the policy applies to.<br/>
+of JVMs the policy applies to. Before startup, Tetragon enables the HotSpot
+attach interface by setting JAVA_TOOL_OPTIONS to the required flags, replacing
+its prior value.<br/>
         </td>
         <td>false</td>
       </tr><tr>
