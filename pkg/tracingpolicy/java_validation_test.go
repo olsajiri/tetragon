@@ -84,6 +84,16 @@ func TestJavaValidationMinimal(t *testing.T) {
 	require.Nil(t, tp.TpSpec().Java.Targets)
 	require.Len(t, tp.TpSpec().Java.Hooks, 1)
 
+	// executable target only: prepare JVM options without method hooks
+	tp, err = FromYAML(javaPolicy(`
+    targets:
+      executables:
+      - /opt/java/openjdk/bin/java
+`))
+	require.NoError(t, err)
+	require.Empty(t, tp.TpSpec().Java.Hooks)
+	require.Equal(t, []string{"/opt/java/openjdk/bin/java"}, tp.TpSpec().Java.Targets.Executables)
+
 	// patches only
 	tp, err = FromYAML(javaPolicy(`
     patches:
@@ -118,13 +128,21 @@ func TestJavaValidationEmpty(t *testing.T) {
 	_, err := FromYAML(javaPolicy(`    {}
 `))
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "java needs at least one hook or patch")
+	require.Contains(t, err.Error(), "java needs at least one hook, patch, or executable target")
 
 	_, err = FromYAML(javaPolicy(`
     hooks: []
 `))
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "java needs at least one hook or patch")
+	require.Contains(t, err.Error(), "java needs at least one hook, patch, or executable target")
+
+	_, err = FromYAML(javaPolicy(`
+    targets:
+      processArgsContains:
+      - orders-service.jar
+`))
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "java needs at least one hook, patch, or executable target")
 }
 
 // requireErrorOneOf checks err contains one of the messages, structural schema

@@ -1644,9 +1644,9 @@ spec:
                       executables:
                         description: |-
                           Exact executable paths (as seen by the process in /proc/<pid>/exe)
-                          of JVMs the policy applies to. Before startup, Tetragon enables the
-                          HotSpot attach interface by setting JAVA_TOOL_OPTIONS to the
-                          required flags, replacing its prior value.
+                          of JVMs the policy applies to. Tetragon enables the HotSpot attach
+                          interface before startup for these executables by setting
+                          JAVA_TOOL_OPTIONS to the required HotSpot flags (replacing its prior value).
                         items:
                           type: string
                         type: array
@@ -1659,9 +1659,10 @@ spec:
                     type: object
                 type: object
                 x-kubernetes-validations:
-                - message: java needs at least one hook or patch
+                - message: java needs at least one hook, patch, or executable target
                   rule: (has(self.hooks) && size(self.hooks) > 0) || (has(self.patches)
-                    && size(self.patches) > 0)
+                    && size(self.patches) > 0) || (has(self.targets) && has(self.targets.executables)
+                    && size(self.targets.executables) > 0)
               kprobes:
                 description: A list of kprobe specs.
                 items:

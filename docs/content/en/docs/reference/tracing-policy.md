@@ -140,7 +140,7 @@ For now only ~ (none) and {} (all) is supported.<br/>
         <td>
           Java runtime method monitoring and class patching for HotSpot JVMs.<br/>
           <br/>
-            <i>Validations</i>:<li>(has(self.hooks) && size(self.hooks) > 0) || (has(self.patches) && size(self.patches) > 0): java needs at least one hook or patch</li>
+            <i>Validations</i>:<li>(has(self.hooks) && size(self.hooks) > 0) || (has(self.patches) && size(self.patches) > 0) || (has(self.targets) && has(self.targets.executables) && size(self.targets.executables) > 0): java needs at least one hook, patch, or executable target</li>
         </td>
         <td>false</td>
       </tr><tr>
@@ -13220,7 +13220,7 @@ For now only ~ (none) and {} (all) is supported.<br/>
         <td>
           Java runtime method monitoring and class patching for HotSpot JVMs.<br/>
           <br/>
-            <i>Validations</i>:<li>(has(self.hooks) && size(self.hooks) > 0) || (has(self.patches) && size(self.patches) > 0): java needs at least one hook or patch</li>
+            <i>Validations</i>:<li>(has(self.hooks) && size(self.hooks) > 0) || (has(self.patches) && size(self.patches) > 0) || (has(self.targets) && has(self.targets.executables) && size(self.targets.executables) > 0): java needs at least one hook, patch, or executable target</li>
         </td>
         <td>false</td>
       </tr><tr>

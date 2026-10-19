@@ -154,7 +154,7 @@ type TracingPolicySpec struct {
 	SelectorsMacros map[string]KProbeSelector `json:"selectorsMacros,omitempty"`
 }
 
-// +kubebuilder:validation:XValidation:rule="(has(self.hooks) && size(self.hooks) > 0) || (has(self.patches) && size(self.patches) > 0)",message="java needs at least one hook or patch"
+// +kubebuilder:validation:XValidation:rule="(has(self.hooks) && size(self.hooks) > 0) || (has(self.patches) && size(self.patches) > 0) || (has(self.targets) && has(self.targets.executables) && size(self.targets.executables) > 0)",message="java needs at least one hook, patch, or executable target"
 type JavaSpec struct {
 	// +kubebuilder:validation:Optional
 	// Targets selects the JVMs the policy applies to. If omitted, the policy

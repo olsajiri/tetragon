@@ -44,15 +44,16 @@ type processIdentity struct {
 
 type javaSensor struct {
 	*sensors.Sensor
-	mu          sync.Mutex
-	policy      javaagent.Policy
-	agentPath   string
-	executables map[string]struct{}
-	argsContain []string
-	active      map[int]processIdentity
-	lastAttempt map[int]time.Time
-	stop        chan struct{}
-	done        chan struct{}
+	mu           sync.Mutex
+	policy       javaagent.Policy
+	agentPath    string
+	agentEnabled bool
+	executables  map[string]struct{}
+	argsContain  []string
+	active       map[int]processIdentity
+	lastAttempt  map[int]time.Time
+	stop         chan struct{}
+	done         chan struct{}
 }
 
 var (
@@ -152,13 +153,6 @@ func (policyHandler) PolicyHandler(
 			"Java class patches are not supported by the JVMTI method monitoring agent",
 		)
 	}
-	if len(spec.Hooks) == 0 {
-		return nil, errors.New("Java policy needs at least one method hook")
-	}
-	agentPath, err := resolveNativeAgentPath(option.Config.JavaAgentPath)
-	if err != nil {
-		return nil, err
-	}
 	executables := make(map[string]struct{})
 	if spec.Targets != nil {
 		for _, path := range spec.Targets.Executables {
@@ -171,6 +165,18 @@ func (policyHandler) PolicyHandler(
 			if token == "" || strings.ContainsRune(token, '\x00') {
 				return nil, errors.New("Java processArgsContains entries must be non-empty and contain no NUL")
 			}
+		}
+	}
+	if len(spec.Hooks) == 0 && len(executables) == 0 {
+		return nil, errors.New("Java policy without method hooks needs at least one executable target")
+	}
+	agentEnabled := len(spec.Hooks) != 0
+	agentPath := ""
+	if agentEnabled {
+		var err error
+		agentPath, err = resolveNativeAgentPath(option.Config.JavaAgentPath)
+		if err != nil {
+			return nil, err
 		}
 	}
 	agentPolicy := javaagent.Policy{
@@ -219,13 +225,14 @@ func (policyHandler) PolicyHandler(
 		return nil, fmt.Errorf("create Java startup sensor: %w", err)
 	}
 	return &javaSensor{
-		Sensor:      bpfSensor,
-		policy:      agentPolicy,
-		agentPath:   agentPath,
-		executables: executables,
-		argsContain: args,
-		active:      make(map[int]processIdentity),
-		lastAttempt: make(map[int]time.Time),
+		Sensor:       bpfSensor,
+		policy:       agentPolicy,
+		agentPath:    agentPath,
+		agentEnabled: agentEnabled,
+		executables:  executables,
+		argsContain:  args,
+		active:       make(map[int]processIdentity),
+		lastAttempt:  make(map[int]time.Time),
 	}, nil
 }
 
@@ -252,22 +259,29 @@ func (s *javaSensor) Load(bpfDir string) error {
 		s.mu.Unlock()
 		return fmt.Errorf("Java sensor %q was destroyed", s.Name)
 	}
-	s.stop = make(chan struct{})
-	s.done = make(chan struct{})
-	s.lastAttempt = make(map[int]time.Time)
+	if s.agentEnabled {
+		s.stop = make(chan struct{})
+		s.done = make(chan struct{})
+		s.lastAttempt = make(map[int]time.Time)
+	}
 	s.mu.Unlock()
 	if len(s.Progs) != 0 {
 		if err := s.Sensor.Load(bpfDir); err != nil {
-			s.mu.Lock()
-			s.stop = nil
-			s.done = nil
-			s.mu.Unlock()
+			if s.agentEnabled {
+				s.mu.Lock()
+				s.stop = nil
+				s.done = nil
+				s.mu.Unlock()
+			}
 			return fmt.Errorf("load Java startup probes: %w", err)
 		}
 	}
 	s.mu.Lock()
 	s.Loaded = true
 	s.mu.Unlock()
+	if !s.agentEnabled {
+		return nil
+	}
 	server := ensureServer()
 	if err := server.SetPolicy(s.policy); err != nil {
 		if s.Sensor.Loaded {
@@ -432,17 +446,22 @@ func (s *javaSensor) Unload(_ bool) error {
 }
 
 func (s *javaSensor) unload(removePolicy func(uint32) error) error {
-	s.mu.Lock()
-	if !s.Loaded {
+	var err error
+	if s.agentEnabled {
+		s.mu.Lock()
+		if !s.Loaded {
+			s.mu.Unlock()
+			return fmt.Errorf("Java sensor %q is not loaded", s.Name)
+		}
+		close(s.stop)
+		done := s.done
 		s.mu.Unlock()
+
+		<-done
+		err = removePolicy(s.policy.ID)
+	} else if !s.Loaded {
 		return fmt.Errorf("Java sensor %q is not loaded", s.Name)
 	}
-	close(s.stop)
-	done := s.done
-	s.mu.Unlock()
-
-	<-done
-	err := removePolicy(s.policy.ID)
 	return errors.Join(err, s.Sensor.Unload(true))
 }
 

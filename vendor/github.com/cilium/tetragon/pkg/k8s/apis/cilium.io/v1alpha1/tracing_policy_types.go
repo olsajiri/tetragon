@@ -154,7 +154,7 @@ type TracingPolicySpec struct {
 	SelectorsMacros map[string]KProbeSelector `json:"selectorsMacros,omitempty"`
 }
 
-// +kubebuilder:validation:XValidation:rule="(has(self.hooks) && size(self.hooks) > 0) || (has(self.patches) && size(self.patches) > 0)",message="java needs at least one hook or patch"
+// +kubebuilder:validation:XValidation:rule="(has(self.hooks) && size(self.hooks) > 0) || (has(self.patches) && size(self.patches) > 0) || (has(self.targets) && has(self.targets.executables) && size(self.targets.executables) > 0)",message="java needs at least one hook, patch, or executable target"
 type JavaSpec struct {
 	// +kubebuilder:validation:Optional
 	// Targets selects the JVMs the policy applies to. If omitted, the policy
@@ -173,7 +173,9 @@ type JavaSpec struct {
 type JavaTargets struct {
 	// +kubebuilder:validation:Optional
 	// Exact executable paths (as seen by the process in /proc/<pid>/exe)
-	// of the JVMs the policy applies to.
+	// of JVMs the policy applies to. Tetragon enables the HotSpot attach
+	// interface before startup for these executables by setting
+	// JAVA_TOOL_OPTIONS to the required HotSpot flags (replacing its prior value).
 	Executables []string `json:"executables,omitempty"`
 	// +kubebuilder:validation:Optional
 	// Every token must occur as a substring of one of the process arguments.

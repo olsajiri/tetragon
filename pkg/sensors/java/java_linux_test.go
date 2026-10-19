@@ -63,6 +63,32 @@ func TestJavaSensorUnloadUnloadsEmbeddedSensor(t *testing.T) {
 	require.False(t, base.Loaded, "embedded sensor Unload should clear Loaded")
 }
 
+func TestExecutableOnlySensorSkipsAgentLifecycle(t *testing.T) {
+	base := &sensors.Sensor{
+		Name:            "java-env-only-test",
+		BpfDir:          t.TempDir(),
+		NoHooksAttached: true,
+	}
+	sensor := &javaSensor{
+		Sensor:       base,
+		agentEnabled: false,
+	}
+
+	serverBefore := agentServer
+	require.NoError(t, sensor.Load(base.BpfDir))
+	require.True(t, sensor.Loaded)
+	require.Same(t, serverBefore, agentServer, "environment-only policy must not initialize the JVMTI server")
+
+	removed := false
+	err := sensor.unload(func(uint32) error {
+		removed = true
+		return nil
+	})
+	require.NoError(t, err)
+	require.False(t, removed, "environment-only policy must not register or remove an agent policy")
+	require.False(t, sensor.Loaded)
+}
+
 func TestResolveNativeAgentPath(t *testing.T) {
 	writeAgent := func(path string) {
 		t.Helper()
