@@ -13,6 +13,7 @@ import (
 
 	api "github.com/cilium/tetragon/pkg/k8s/apis/cilium.io/v1alpha1"
 	"github.com/cilium/tetragon/pkg/policyfilter"
+	"github.com/cilium/tetragon/pkg/sensors"
 )
 
 func TestPolicyHandlerRejectsPatches(t *testing.T) {
@@ -36,4 +37,26 @@ func TestContainsArgs(t *testing.T) {
 	require.True(t, containsArgs(cmdline, []string{"orders", "port=8080"}))
 	require.False(t, containsArgs(cmdline, []string{"orders", "missing"}))
 	require.True(t, containsArgs(cmdline, nil))
+}
+
+func TestJavaSensorUnloadUnloadsEmbeddedSensor(t *testing.T) {
+	base := &sensors.Sensor{
+		Name:            "java-test",
+		BpfDir:          t.TempDir(),
+		Loaded:          true,
+		NoHooksAttached: true,
+	}
+	sensor := &javaSensor{
+		Sensor: base,
+		stop:   make(chan struct{}),
+		done:   make(chan struct{}),
+	}
+	close(sensor.done)
+
+	err := sensor.unload(func(uint32) error {
+		require.True(t, base.Loaded, "embedded sensor must stay loaded until its Unload runs")
+		return nil
+	})
+	require.NoError(t, err)
+	require.False(t, base.Loaded, "embedded sensor Unload should clear Loaded")
 }

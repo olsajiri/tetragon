@@ -57,14 +57,15 @@ type Server struct {
 }
 
 type session struct {
-	server  *Server
-	conn    *net.UnixConn
-	pid     uint32
-	ring    *Ring
-	mu      sync.Mutex
-	seq     uint32
-	methods map[uint64]methodDefinition
-	applied map[uint32]bool
+	server     *Server
+	conn       *net.UnixConn
+	pid        uint32
+	startTicks uint64
+	ring       *Ring
+	mu         sync.Mutex
+	seq        uint32
+	methods    map[uint64]methodDefinition
+	applied    map[uint32]bool
 }
 
 type methodDefinition struct {
@@ -85,21 +86,48 @@ func NewServer(path string, sink EventSink) *Server {
 
 // AllowProcess authorizes the given policy to attach one process identity to
 // the control socket. The PID alone is insufficient because Linux reuses it.
-func (s *Server) AllowProcess(policyID, pid uint32, startTicks uint64) {
+func (s *Server) AllowProcess(policyID, pid uint32, startTicks uint64) error {
+	s.updateMu.Lock()
+	defer s.updateMu.Unlock()
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	if s.authorized[pid] == nil {
 		s.authorized[pid] = make(map[uint32]uint64)
 	}
 	s.authorized[pid][policyID] = startTicks
+	var attached *session
+	policy, havePolicy := s.policies[policyID]
+	for c := range s.sessions {
+		if c.pid == pid && c.startTicks == startTicks {
+			attached = c
+			break
+		}
+	}
+	s.mu.Unlock()
+	if attached != nil && havePolicy {
+		return attached.apply(policy)
+	}
+	return nil
 }
 
-func (s *Server) RevokeProcess(policyID, pid uint32) {
+func (s *Server) RevokeProcess(policyID, pid uint32, startTicks uint64) {
+	s.updateMu.Lock()
+	defer s.updateMu.Unlock()
 	s.mu.Lock()
-	defer s.mu.Unlock()
-	delete(s.authorized[pid], policyID)
+	if s.authorized[pid][policyID] == startTicks {
+		delete(s.authorized[pid], policyID)
+	}
 	if len(s.authorized[pid]) == 0 {
 		delete(s.authorized, pid)
+	}
+	var sessions []*session
+	for c := range s.sessions {
+		if c.pid == pid && c.startTicks == startTicks {
+			sessions = append(sessions, c)
+		}
+	}
+	s.mu.Unlock()
+	for _, c := range sessions {
+		_ = c.remove(policyID)
 	}
 }
 
@@ -115,7 +143,9 @@ func (s *Server) SetPolicy(policy Policy) error {
 	s.policies[policy.ID] = policy
 	sessions := make([]*session, 0, len(s.sessions))
 	for c := range s.sessions {
-		sessions = append(sessions, c)
+		if s.authorized[c.pid][policy.ID] == c.startTicks {
+			sessions = append(sessions, c)
+		}
 	}
 	s.mu.Unlock()
 	var errs []error
@@ -225,18 +255,30 @@ func (s *Server) handle(conn *net.UnixConn) {
 		return
 	}
 	c := &session{
-		server:  s,
-		conn:    conn,
-		pid:     uint32(pid),
-		ring:    ring,
-		methods: make(map[uint64]methodDefinition),
-		applied: make(map[uint32]bool),
+		server:     s,
+		conn:       conn,
+		pid:        uint32(pid),
+		startTicks: startTicks,
+		ring:       ring,
+		methods:    make(map[uint64]methodDefinition),
+		applied:    make(map[uint32]bool),
 	}
 	s.mu.Lock()
 	s.sessions[c] = struct{}{}
 	policies := make([]Policy, 0, len(s.policies))
-	for _, p := range s.policies {
-		policies = append(policies, p)
+	for policyID, authorizedStart := range s.authorized[uint32(pid)] {
+		if authorizedStart != startTicks {
+			continue
+		}
+		if p, ok := s.policies[policyID]; ok {
+			policies = append(policies, p)
+		}
+	}
+	if len(policies) == 0 {
+		delete(s.sessions, c)
+		s.mu.Unlock()
+		_ = ring.Close()
+		return
 	}
 	s.mu.Unlock()
 	defer func() { s.mu.Lock(); delete(s.sessions, c); s.mu.Unlock(); _ = ring.Close() }()

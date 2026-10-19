@@ -62,6 +62,13 @@ enum resolve_stage {
 	STAGE_RESOLVED = 3
 };
 
+enum entry_resolve_stage {
+	ENTRY_STAGE_NONE = 0,
+	ENTRY_STAGE_MMAP_PENDING = 1,
+	ENTRY_STAGE_SETENV_PENDING = 2,
+	ENTRY_STAGE_DONE = 3,
+};
+
 // Struct to keep track of our state machine + additional per-task data.
 struct pending_call {
 	__u32 stage; // enum resolve_stage
@@ -72,6 +79,7 @@ struct pending_call {
 	__u64 orig_addr; // initial addr to be restored in case of errors
 	__u64 expected_sp; // used to avoid a signal handler called in the middle of our state machine
 	__u64 true_return_addr; // final jump return address; only used for arm64
+	__u32 entry_stage; // enum entry_resolve_stage, used by the Java startup probe
 
 	// Computed addresses (already libc_base shifted) for mmap and dlopen + final cache for symbol address
 	struct {
@@ -289,6 +297,85 @@ uprobe_dyn_state_machine(struct pt_regs *ctx, struct uprobe_regs *regs, __u32 sy
 		}
 		break;
 	}
+	return 0;
+}
+
+FUNC_INLINE void resume_entry(struct pt_regs *ctx, struct pending_call *pending_c)
+{
+	restore_orig_regs(ctx, pending_c);
+	ctx->sp = pending_c->expected_sp;
+	jump_to(ctx, pending_c->orig_addr);
+	pending_c->entry_stage = ENTRY_STAGE_DONE;
+}
+
+// Entry-point override for Java startup. Unlike a normal function override,
+// _start has no caller return address. Dispatch through mmap and setenv, then
+// return through the uprobe and restore the process's initial execution state.
+FUNC_INLINE int uprobe_dyn_entry_state_machine(struct pt_regs *ctx,
+					      __u64 mmap_offset,
+					      __u64 setenv_offset)
+{
+	static const char env_data[] =
+		"JAVA_TOOL_OPTIONS\0"
+		"-XX:+StartAttachListener "
+		"-XX:+EnableDynamicAgentLoading "
+		"-XX:-DisableAttachMechanism\0";
+	static const char libc[SONAME_MAX] = "libc.so.6";
+	struct task_struct *task = (struct task_struct *)get_current_task_btf();
+	struct pending_call *pending_c;
+	__u64 base, scratch;
+	long err;
+
+	pending_c = task_storage_get(&tg_dyn_sm, task, NULL, BPF_LOCAL_STORAGE_GET_F_CREATE);
+	if (!pending_c)
+		return 0;
+
+	if (pending_c->entry_stage == ENTRY_STAGE_NONE) {
+		base = find_library_base(task, libc);
+		if (!base || !mmap_offset || !setenv_offset) {
+			store_orig_regs(ctx, pending_c);
+			resume_entry(ctx, pending_c);
+			return 0;
+		}
+		store_orig_regs(ctx, pending_c);
+		pending_c->addrs.mmap = base + mmap_offset;
+		pending_c->addrs.sym = base + setenv_offset;
+		pending_c->entry_stage = ENTRY_STAGE_MMAP_PENDING;
+		store_ret_addr(ctx, pending_c);
+		push_fake_frame(ctx, pending_c);
+		jump_to_mmap(ctx, pending_c->addrs.mmap);
+		return 0;
+	}
+
+	if (pending_c->entry_stage == ENTRY_STAGE_DONE)
+		return 0;
+
+	normalize_sp(ctx, pending_c);
+	if (PT_REGS_SP(ctx) != pending_c->expected_sp) {
+		resume_entry(ctx, pending_c);
+		return 0;
+	}
+
+	if (pending_c->entry_stage == ENTRY_STAGE_MMAP_PENDING) {
+		scratch = PT_REGS_RC(ctx);
+		if ((__s64)scratch < 0) {
+			resume_entry(ctx, pending_c);
+			return 0;
+		}
+		err = probe_write_user((void *)scratch, env_data, sizeof(env_data));
+		if (err < 0) {
+			resume_entry(ctx, pending_c);
+			return 0;
+		}
+		pending_c->entry_stage = ENTRY_STAGE_SETENV_PENDING;
+		store_ret_addr(ctx, pending_c);
+		push_fake_frame(ctx, pending_c);
+		jump_to_setenv(ctx, scratch, scratch + sizeof("JAVA_TOOL_OPTIONS"), pending_c->addrs.sym);
+		return 0;
+	}
+
+	if (pending_c->entry_stage == ENTRY_STAGE_SETENV_PENDING)
+		resume_entry(ctx, pending_c);
 	return 0;
 }
 

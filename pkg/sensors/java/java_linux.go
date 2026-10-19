@@ -181,12 +181,12 @@ func (policyHandler) PolicyHandler(
 	if spec.Targets != nil {
 		args = append(args, spec.Targets.ProcessArgsContains...)
 	}
+	bpfSensor, err := startupSensor(policy, executables)
+	if err != nil {
+		return nil, fmt.Errorf("create Java startup sensor: %w", err)
+	}
 	return &javaSensor{
-		Sensor: &sensors.Sensor{
-			Name:      sensorName + ":" + policy.TpName(),
-			Policy:    policy.TpName(),
-			Namespace: policy.TpNamespace(),
-		},
+		Sensor:      bpfSensor,
 		policy:      agentPolicy,
 		executables: executables,
 		argsContain: args,
@@ -208,7 +208,7 @@ func policyID(policy tracingpolicy.TracingPolicy) uint32 {
 	return h
 }
 
-func (s *javaSensor) Load(_ string) error {
+func (s *javaSensor) Load(bpfDir string) error {
 	s.mu.Lock()
 	if s.Loaded {
 		s.mu.Unlock()
@@ -221,11 +221,24 @@ func (s *javaSensor) Load(_ string) error {
 	s.stop = make(chan struct{})
 	s.done = make(chan struct{})
 	s.lastAttempt = make(map[int]time.Time)
+	s.mu.Unlock()
+	if len(s.Progs) != 0 {
+		if err := s.Sensor.Load(bpfDir); err != nil {
+			s.mu.Lock()
+			s.stop = nil
+			s.done = nil
+			s.mu.Unlock()
+			return fmt.Errorf("load Java startup probes: %w", err)
+		}
+	}
+	s.mu.Lock()
 	s.Loaded = true
 	s.mu.Unlock()
 	server := ensureServer()
 	if err := server.SetPolicy(s.policy); err != nil {
-		_ = s.Unload(true)
+		if s.Sensor.Loaded {
+			_ = s.Sensor.Unload(true)
+		}
 		return err
 	}
 	if err := s.scan(); err != nil {
@@ -270,7 +283,7 @@ func (s *javaSensor) scan() error {
 			continue
 		} else if ok {
 			delete(s.active, target.pid)
-			server.RevokeProcess(s.policy.ID, uint32(target.pid))
+			server.RevokeProcess(s.policy.ID, uint32(target.pid), current.startTicks)
 			attachedMu.Lock()
 			if refs := attachedVMs[current]; refs <= 1 {
 				delete(attachedVMs, current)
@@ -283,7 +296,10 @@ func (s *javaSensor) scan() error {
 			continue
 		}
 		s.lastAttempt[target.pid] = time.Now()
-		server.AllowProcess(s.policy.ID, uint32(target.pid), target.startTicks)
+		if err := server.AllowProcess(s.policy.ID, uint32(target.pid), target.startTicks); err != nil && first == nil {
+			first = fmt.Errorf("apply Java policy to pid %d: %w", target.pid, err)
+			continue
+		}
 		attachedMu.Lock()
 		refs := attachedVMs[target]
 		if refs > 0 {
@@ -295,7 +311,7 @@ func (s *javaSensor) scan() error {
 		}
 		if err := s.attach(target); err != nil {
 			attachedMu.Unlock()
-			server.RevokeProcess(s.policy.ID, uint32(target.pid))
+			server.RevokeProcess(s.policy.ID, uint32(target.pid), target.startTicks)
 			if first == nil {
 				first = fmt.Errorf("attach JVMTI agent to pid %d: %w", target.pid, err)
 			}
@@ -313,7 +329,7 @@ func (s *javaSensor) scan() error {
 		current, err := readProcessIdentity(pid)
 		if err != nil || current.startTicks != target.startTicks {
 			delete(s.active, pid)
-			server.RevokeProcess(s.policy.ID, uint32(pid))
+			server.RevokeProcess(s.policy.ID, uint32(pid), target.startTicks)
 			attachedMu.Lock()
 			if refs := attachedVMs[target]; refs <= 1 {
 				delete(attachedVMs, target)
@@ -376,17 +392,24 @@ func writeAgentFile(path string, data []byte) error {
 }
 
 func (s *javaSensor) Unload(_ bool) error {
+	return s.unload(func(id uint32) error {
+		return ensureServer().RemovePolicy(id)
+	})
+}
+
+func (s *javaSensor) unload(removePolicy func(uint32) error) error {
 	s.mu.Lock()
 	if !s.Loaded {
 		s.mu.Unlock()
 		return fmt.Errorf("Java sensor %q is not loaded", s.Name)
 	}
-	s.Loaded = false
 	close(s.stop)
 	done := s.done
 	s.mu.Unlock()
+
 	<-done
-	return ensureServer().RemovePolicy(s.policy.ID)
+	err := removePolicy(s.policy.ID)
+	return errors.Join(err, s.Sensor.Unload(true))
 }
 
 func (s *javaSensor) Destroy(unpin bool) error {

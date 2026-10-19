@@ -51,6 +51,14 @@ FUNC_INLINE void push_fake_frame(struct pt_regs *ctx, struct pending_call *pc)
 	with_errmetrics(probe_write_user, (void *)ctx->sp, &pc->dispatch_addr, sizeof(__u64));
 }
 
+FUNC_INLINE void jump_to_setenv(struct pt_regs *ctx, __u64 name, __u64 value, __u64 addr)
+{
+	ctx->di = name;
+	ctx->si = value;
+	ctx->dx = 1; // overwrite existing JAVA_TOOL_OPTIONS
+	jump_to(ctx, addr);
+}
+
 FUNC_INLINE void normalize_sp(struct pt_regs *ctx, struct pending_call *pc)
 {
 	// After the real callee's `ret` pops exactly 8 bytes, sp lands at

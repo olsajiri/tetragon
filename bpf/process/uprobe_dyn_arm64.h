@@ -33,6 +33,14 @@ FUNC_INLINE void jump_to(struct pt_regs *ctx, __u64 addr)
 	ctx->pc = addr;
 }
 
+FUNC_INLINE void jump_to_setenv(struct pt_regs *ctx, __u64 name, __u64 value, __u64 addr)
+{
+	ctx->regs[0] = name;
+	ctx->regs[1] = value;
+	ctx->regs[2] = 1; // overwrite existing JAVA_TOOL_OPTIONS
+	jump_to(ctx, addr);
+}
+
 FUNC_INLINE void push_fake_frame(struct pt_regs *ctx, struct pending_call *pc)
 {
 	ctx->regs[30] = pc->dispatch_addr;
